@@ -49,4 +49,9 @@ class JoinClause extends Builder
 		return $this;
 	}
 
+	public function orOn($column, $operator = null, $second = null)
+	{
+		return $this->on($column, $operator, $second, 'or');
+	}
+
 }

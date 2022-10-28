@@ -1,17 +1,12 @@
 <?php
-
-spl_autoload_register(function($className){
-	$file = __DIR__ . DIRECTORY_SEPARATOR
-		. 'src' . DIRECTORY_SEPARATOR . $className . '.php';
-	//
-	include $file;
-});
+require __DIR__ . '/vendor/autoload.php';
 
 use Asta\Database\Query\Builder;
 
 $subquery = Builder::new()->from('attendants', 'a')
 	->select('name','age','city')
-	->where('name','like','%z');
+	->where('name','like','%z')
+	->orWhere('name','like','%s');
 
 $querist = Builder::new()->from('clients', 'c')
 	->join('requests as r','c.id','=','r.id_client')
@@ -21,7 +16,7 @@ $querist = Builder::new()->from('clients', 'c')
 	})->joinSub($subquery, 'sq', function($join){
 		$join->on('a.city','sq.city');
 	})->select('c.id','c.name','c.reg')
-	->selectSub(function($query ){
+	->selectSub(function($query){
 		$query->select('count(*)')->from('customers', 'u')
 			->join('cities','u.id_city','=','cities.id')
 			->where('name', 'like', 'A%')

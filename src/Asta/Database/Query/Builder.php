@@ -4,6 +4,7 @@ namespace Asta\Database\Query;
 use Asta\Database\Connections\Connection;
 use Asta\Database\Connections\ConnectionInterface;
 use Asta\Database\Processors\Processor;
+use Asta\Database\Traits\CastsValues;
 use Asta\Database\Query\Grammars\Grammar;
 use Asta\Database\Query\Clauses\JoinClause;
 
@@ -19,6 +20,8 @@ use Closure;
  */
 class Builder
 {
+	use CastsValues;
+
 	protected $columns;
 	protected $from;
 	protected $joins;
@@ -54,17 +57,6 @@ class Builder
 		'&', '|', '^', '<<', '>>', '&~',
 	];
 
-	protected function invalidOperator($operator)
-	{
-		return (! is_string($operator))
-			|| (! in_array(strtolower($operator), $this->operators, true)); 
-	}
-
-	protected function isBitwiseOperator($operator)
-	{
-		return in_array(strtolower($operator), $this->operators, true);
-	}
-
 	private $connection;
 	private $grammar;
 	private $processor;
@@ -83,6 +75,39 @@ class Builder
 	{
 		return $this->processor;
 	}
+
+
+	protected function invalidOperator($operator)
+	{
+		return (! is_string($operator))
+			|| (! in_array(strtolower($operator), $this->operators, true)); 
+	}
+
+	protected function isBitwiseOperator($operator)
+	{
+		return in_array(strtolower($operator), $this->operators, true);
+	}
+
+	/**
+	 **/
+
+	protected function isQueryable($query)
+	{
+		return ($query instanceof Closure)
+			|| ($query instanceof self);
+	}
+
+	protected function prepareValue($value)
+	{
+		if ($value instanceof Expression) {
+			return (string) $value->getValue();
+		}
+		//
+		return $this->castValue($value);
+	}
+
+	/**
+	 **/
 
 	public function __construct(
 		ConnectionInterface $connection, Grammar $grammar, Processor $processor
@@ -135,12 +160,6 @@ class Builder
 		return $this;
 	}
 
-	protected function isQueryable($query)
-	{
-		return ($query instanceof Closure)
-			|| ($query instanceof self);
-	}
-
 	public function from($table, string $as = null)
 	{
 		if ($this->isQueryable($table)) {
@@ -155,22 +174,6 @@ class Builder
 	public function join($table, $first, $operator = null, $second = null, $type = 'inner', $where = false)
 	{
 		$join = JoinClause::make($this, $type, $table);
-		//
-		if ($first instanceof Closure) {
-			$first($join);
-		} else {
-			$method = $where ? 'where' : 'on';
-			$join->$method($first, $operator, $second);
-		}
-		//
-		$this->joins[] = $join->toSql();
-		//
-		return $this;
-	}
-
-	public function joinSub(Builder $query, $as, Closure $first, $operator = null, $second = null, $type = 'inner', $where = false)
-	{
-		$join = JoinClause::make($this, $type, [$as => $query]);
 		//
 		if ($first instanceof Closure) {
 			$first($join);
@@ -199,8 +202,31 @@ class Builder
 		return $this->join($table, $first, $operator, $second, 'cross', $where);
 	}
 
+	public function joinSub(Builder $query, $as, Closure $first, $operator = null, $second = null, $type = 'inner', $where = false)
+	{
+		return $this->join([$as => $query], $first, $operator, $second, $type, $where);
+	}
+
+	public function leftJoinSub(Builder $query, $as, Closure $first, $operator = null, $second = null, $where = false)
+	{
+		return $this->joinSub($query, $as, $first, $operator, $second, 'left', $where);
+	}
+
+	public function rightJoinSub(Builder $query, $as, Closure $first, $operator = null, $second = null, $where = false)
+	{
+		return $this->joinSub($query, $as, $first, $operator, $second, 'right', $where);
+	}
+
+	public function crossJoinSub(Builder $query, $as, Closure $first, $operator = null, $second = null, $where = false)
+	{
+		return $this->joinSub($query, $as, $first, $operator, $second, 'cross', $where);
+	}
+
+
 	public function where($column, $operator = null, $value = null, $boolean = 'and')
 	{
+		$boolean = (strtolower($boolean) === 'and') ? 'and' : 'or';
+
 		if (is_array($column)) {
 			foreach ($column as $name => $value) {
 				$this->wheres[] = ['basic', $name, '=', $value, $boolean];
@@ -225,6 +251,15 @@ class Builder
 		return $this;
 	}
 
+	public function andWhere($column, $operator = null, $value = null)
+	{
+		return $this->where($column, $operator, $value, 'and');
+	}
+
+	public function orWhere($column, $operator = null, $value = null)
+	{
+		return $this->where($column, $operator, $value, 'or');
+	}
 
 	public function toSql()
 	{
@@ -253,10 +288,13 @@ class Builder
 		}
 		//
 		$whereChain = [];
-		$count = count($this->wheres);
+		$total = $count = count($this->wheres);
 		//
 		foreach ($this->wheres as $item) {
-			--$count;
+			if ($count < $total) {
+				$whereChain[] = $item[4];
+			}
+			//
 			$type = $item[0];
 			//
 			if ($type=='basic') {
@@ -265,9 +303,7 @@ class Builder
 				$whereChain[] = '(' . $item[1]->toSql() . ')';
 			}
 			//
-			if ($count > 0) {
-				$whereChain[] = $item[4];
-			}
+			--$count;
 		}
 		//
 		if ($this instanceof JoinClause) {

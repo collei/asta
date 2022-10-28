@@ -1,6 +1,6 @@
 {
 	"name": "collei/asta",
-	"description": "Simple database query tools for any project",
+	"description": "Query tools for any PHP project, backed by Doctrine DBAL.",
 	"keywords": [
 		"asta",
 		"php",
@@ -10,7 +10,8 @@
 	"type": "library",
 	"license": "MIT",
 	"require": {
-		"php": "^5.6 || ^7.0 || ^8.0"
+		"php": "^5.6 || ^7.0 || ^8.0",
+		"doctrine/dbal": "^3.5"
 	},
 	"autoload": {
 		"psr-4": {
