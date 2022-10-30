@@ -22,6 +22,8 @@ class Builder
 {
 	use CastsValues;
 
+	private static $bindingCounter = 0;
+
 	protected $columns;
 	protected $from;
 	protected $joins;
@@ -76,6 +78,70 @@ class Builder
 		return $this->processor;
 	}
 
+	protected function addColumns(array $columns)
+	{
+		foreach ($columns as $as => $column) {
+			if (is_string($as)) {
+				$this->columns[] = "{$column} as {$as}";
+			} else {
+				$this->columns[] = $column;
+			}
+		}
+	}
+
+	protected function addBinding($value, string $type = 'where')
+	{
+		if (!array_key_exists($type, $this->bindings)) {
+			throw new InvalidArgumentException("Invalid binding type: {$type}.");
+		}
+		//
+		$next = ':n' . (++self::$bindingCounter) . ':';
+		//
+		$this->bindings[$type][$next] = $value;
+		//
+		return $next;
+	}
+
+	protected function importBindingsFromSubquery(self $query, $type = 'where')
+	{
+		foreach ($query->getBindings('where') as $binder => $bound) {
+			$this->bindings['where'][$binder] = $bound;
+		}
+	}
+
+	protected function retrieveBound($binder, string $type = null)
+	{
+		if (!is_null($type)) {
+			if (!array_key_exists($type, $this->bindings)) {
+				throw new InvalidArgumentException("Invalid binding type: {$type}.");
+			}
+			//
+			if (!array_key_exists($binder, $this->bindings[$type])) {
+				throw new InvalidArgumentException("Binding not found: {$binder}.");
+			}
+			//
+			return $this->bindings[$type][$binder];
+		} else {
+			foreach ($this->bindings as $sub) {
+				foreach ($sub as $keeper => $kept) {
+					if ($binder === $keeper) {
+						return $kept;
+					}
+				}
+			}
+		}
+		//
+		throw new InvalidArgumentException("This binding does not exist: {$binder}.");
+	}
+
+	protected function getBindings(string $type = 'where')
+	{
+		if (!array_key_exists($type, $this->bindings)) {
+			throw new InvalidArgumentException("Invalid binding type: {$type}.");
+		}
+		//
+		return $binds = $this->bindings[$type];
+	}
 
 	protected function invalidOperator($operator)
 	{
@@ -97,13 +163,43 @@ class Builder
 			|| ($query instanceof self);
 	}
 
+	protected function castValueToSqlLiteral($value, $alternative = null)
+	{
+		$value = $this->castValue($value, $alternative);
+		//
+		if (is_string($value)) {
+			return '\'' . str_replace('\'', '', $value) . '\'';
+		} elseif ($value instanceof DateTime) {
+			return '\'' . $value->format('Y-m-d H:i:s.u') . '\'';
+		} elseif (is_float($value)) {
+			return number_format($value, 8, '.', '');
+		} elseif (is_int($value)) {
+			return (string)($value);
+		} elseif (is_bool($value)) {
+			return $value ? '1' : '0';
+		} elseif (is_null($value)) {
+			return 'NULL';
+		}
+	}
+
+	public const REGEX_FIELDSPEC_SELECT = '^(((`[[^`]+]`|\[[^\]]+\]|[A-Za-z_]\w*)\.)*(`[[^`]+]`|\[[^\]]+\]|[A-Za-z_]\w*))(\s+as\s+(`[[^`]+]`|\[[^\]]+\]|[A-Za-z_]\w*))?$';
+	public const REGEX_FIELDSPEC_WHERE = '^(((`[[^`]+]`|\[[^\]]+\]|[A-Za-z_]\w*)\.)+)?(`[[^`]+]`|\[[^\]]+\]|[A-Za-z_]\w*)$';
+
 	protected function prepareValue($value)
 	{
 		if ($value instanceof Expression) {
 			return (string) $value->getValue();
 		}
 		//
-		return $this->castValue($value);
+		if (preg_match('#^(\:n\d+\:)$#i', $value, $found)) {
+			$value = $this->retrieveBound($found[1]);
+		}
+		//
+		if (preg_match(('#' . self::REGEX_FIELDSPEC_WHERE . '#i'), $value)) {
+			return $value;
+		}
+		//
+		return $this->castValueToSqlLiteral($value);
 	}
 
 	/**
@@ -139,13 +235,7 @@ class Builder
 		//
 		$columns = is_array($columns) ? $columns : func_get_args();
 		//
-		foreach ($columns as $as => $column) {
-			if (is_string($as)) {
-				$this->columns[] = "{$column} as {$as}";
-			} else {
-				$this->columns[] = $column;
-			}
-		}
+		$this->addColumns($columns);
 		//
 		return $this;
 	}
@@ -222,6 +312,25 @@ class Builder
 		return $this->joinSub($query, $as, $first, $operator, $second, 'cross', $where);
 	}
 
+	protected function addBasicWhere(
+		$column, $operator = null, $value = null, $boolean = 'and'
+	) {
+		$this->wheres[] = [
+			'basic',
+			$column,
+			$operator,
+			$this->addBinding($value, 'where'),
+			$boolean
+		];
+	}
+
+	protected function addNestedWhere(
+		self $query, string $boolean
+	) {
+		$this->wheres[] = ['nested', $query->toSql(), null, null, $boolean];
+		//
+		$this->importBindingsFromSubquery($query, 'where');
+	}
 
 	public function where($column, $operator = null, $value = null, $boolean = 'and')
 	{
@@ -229,8 +338,9 @@ class Builder
 
 		if (is_array($column)) {
 			foreach ($column as $name => $value) {
-				$this->wheres[] = ['basic', $name, '=', $value, $boolean];
+				$this->addBasicWhere($name, '=', $value, $boolean);
 			}
+			//
 			return $this;
 		}
 		//
@@ -239,13 +349,13 @@ class Builder
 
 			$callback($query = $this->forSubQuery()); 
 
-			$this->wheres[] = ['nested', $query->toSql(), null, null, $boolean];
+			$this->addNestedWhere($query, $boolean);
 		} else {
 			if (is_null($value)) {
 				[$operator, $value] = ['=', $operator];
 			}
-
-			$this->wheres[] = ['basic', $column, $operator, $value, $boolean];
+			//
+			$this->addBasicWhere($column, $operator, $value, $boolean);
 		}
 		//
 		return $this;
@@ -298,7 +408,8 @@ class Builder
 			$type = $item[0];
 			//
 			if ($type=='basic') {
-				$whereChain[] = "({$item[1]} {$item[2]} {$item[3]})";
+				$val = $this->prepareValue($item[3]);
+				$whereChain[] = "({$item[1]} {$item[2]} {$val})";
 			} elseif ($type=='nested') {
 				$whereChain[] = '(' . $item[1]->toSql() . ')';
 			}

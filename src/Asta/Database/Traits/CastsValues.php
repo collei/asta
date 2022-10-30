@@ -31,7 +31,7 @@ trait CastsValues
 	public function castNumeric($value)
 	{
 		if (is_numeric($value)) {
-			if (is_int($value)) {
+			if (is_int($value) || ctype_digit($value)) {
 				return (int)$value;
 			}
 			//
@@ -43,14 +43,14 @@ trait CastsValues
 
 	public function castInteger($value)
 	{
-		if (is_numeric($value) || is_int($value)) {
+		if (is_int($value) || ctype_digit($value)) {
 			return (int)$value;
 		}
 		//
 		return 0;
 	}
 
-	public function castInteger($value)
+	public function castInt($value)
 	{
 		return $this->castInteger($value);
 	}
@@ -73,8 +73,7 @@ trait CastsValues
 	{
 		if ($time = strtotime($value)) {
 			return DateTime::createFromFormat(
-				'Y-m-d H:i:s.u',
-				date('Y-m-d H:i:s.u', $time)
+				'Y-m-d H:i:s.u', date('Y-m-d H:i:s.u', $time)
 			);
 		}
 		//
@@ -101,27 +100,6 @@ trait CastsValues
 		//
 		return false;
 	}
-
-	protected function castToSqlLiteral($value, $alternative = null)
-	{
-		$value = $this->castValue($value, $alternative);
-		//
-		if (is_string($value)) {
-			return '\'' . str_replace('\'', '', $value) . '\'';
-		} elseif ($value instanceof DateTime) {
-			return '\'' . $value->format('Y-m-d H:i:s.u') . '\'';
-		} elseif (is_float($value)) {
-			return number_format($value, 8, '.', '');
-		} elseif (is_int($value)) {
-			return (string)($value);
-		} elseif (is_bool($value)) {
-			return $value ? '1' : '0';
-		} elseif (is_null($value)) {
-			return 'NULL';
-		}
-	}
-
-
 
 }
 

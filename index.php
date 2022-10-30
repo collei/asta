@@ -3,10 +3,13 @@ require __DIR__ . '/vendor/autoload.php';
 
 use Asta\Database\Query\Builder;
 
+$client_supplied_flithy_data = "\'%d\'--\r\n select * from usuarios ";
+
 $subquery = Builder::new()->from('attendants', 'a')
 	->select('name','age','city')
 	->where('name','like','%z')
-	->orWhere('name','like','%s');
+	->orWhere('name','like','%s')
+	->orWhere('name','like',$client_supplied_flithy_data);
 
 $querist = Builder::new()->from('clients', 'c')
 	->join('requests as r','c.id','=','r.id_client')
