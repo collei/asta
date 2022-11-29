@@ -1,6 +1,8 @@
 <?php
 namespace Asta\Database\Query\Grammars;
 
+use DateTime;
+use DateTimeInterface;
 
 /**
  *	Query grammar
@@ -11,7 +13,81 @@ namespace Asta\Database\Query\Grammars;
  */
 class Grammar
 {
+	public const REGEX_FIELDSPEC_SELECT = '^(((`[[^`]+]`|\[[^\]]+\]|[A-Za-z_]\w*)\.)*(`[[^`]+]`|\[[^\]]+\]|[A-Za-z_]\w*))(\s+as\s+(`[[^`]+]`|\[[^\]]+\]|[A-Za-z_]\w*))?$';
+	public const REGEX_FIELDSPEC_WHERE = '^(((`[[^`]+]`|\[[^\]]+\]|[A-Za-z_]\w*)\.)+)?(`[[^`]+]`|\[[^\]]+\]|[A-Za-z_]\w*)$';
 	
+	public function getRegexFieldspecSelect()
+	{
+		return ('#' . self::REGEX_FIELDSPEC_SELECT . '#i');
+	}
+
+	public function getRegexFieldspecWhere()
+	{
+		return ('#' . self::REGEX_FIELDSPEC_WHERE . '#i');
+	}
+
+	public function valueToSqlBoolean(bool $value)
+	{
+		return $value ? '1' : '0';
+	}
+
+	public function valueToSqlInt(int $value)
+	{
+		return (string)$value;
+	}
+
+	public function valueToSqlFloat(float $value, int $precision = 12)
+	{
+		return number_format($value, $precision, '.', '');
+	}
+
+	public function valueToSqlDateTime(DateTime $value)
+	{
+		return '\'' . $value->format('Y-m-d H:i:s.u') . '\'';
+	}
+
+	public function valueToSqlString(string $value)
+	{
+		return '\'' . str_replace('\'', '', $value) . '\'';		
+	}
+
+	public function compileSelect(
+		array $columns, $from, array $joins = [], bool $distinct = false
+	) {
+		return 'SELECT ' . ($distinct ? 'DISTINCT ' : '')
+			. implode(', ', $columns)
+			. ' FROM ' . $from
+			. ' ' . implode(' ', $joins);
+	}
+
+	public function compileJoin(
+		$type, $table, $as = null, array $whereChain = []
+	) {
+		return (
+			($as)
+				? " {$type} JOIN ({$table}) AS {$as} ON "
+				: " {$type} JOIN {$table} ON "
+		) . implode(' ', $whereChain);
+	}
+
+	public function compileWhereChain(array $whereChain)
+	{
+		return ' WHERE ' . implode(' ', $whereChain);
+	}
+
+	public function compileExpression($first, $operator, $last)
+	{
+		return "({$first} {$operator} {$last})";
+	}
+
+	public function compileExists($subquery)
+	{
+		return " EXISTS ({$subquery})";
+	}
+
+
+
+
 }
 
 

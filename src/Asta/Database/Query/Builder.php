@@ -9,6 +9,7 @@ use Asta\Database\Query\Grammars\Grammar;
 use Asta\Database\Query\Clauses\JoinClause;
 
 use Closure;
+use Stringable;
 
 /**
  *	The query builder, fully naïve mode (never checks for real existence
@@ -33,6 +34,8 @@ class Builder
 	protected $orders;
 	protected $limit = null;
 	protected $offset = null;
+
+	protected $distinct = false;
 
 	protected $bindings = [
 		'select' => [],
@@ -167,35 +170,44 @@ class Builder
 	{
 		$value = $this->castValue($value, $alternative);
 		//
-		if (is_string($value)) {
-			return '\'' . str_replace('\'', '', $value) . '\'';
+		if (is_string($value) || $value instanceof Stringable) {
+			return $this->grammar->valueToSqlString($value);
 		} elseif ($value instanceof DateTime) {
-			return '\'' . $value->format('Y-m-d H:i:s.u') . '\'';
+			return $this->grammar->valueToSqlDateTime($value);
 		} elseif (is_float($value)) {
-			return number_format($value, 8, '.', '');
+			return $this->grammar->valueToSqlFloat($value);
 		} elseif (is_int($value)) {
-			return (string)($value);
+			return $this->grammar->valueToSqlInt($value);
 		} elseif (is_bool($value)) {
-			return $value ? '1' : '0';
+			return $this->grammar->valueToSqlBoolean($value);
 		} elseif (is_null($value)) {
 			return 'NULL';
 		}
 	}
 
-	public const REGEX_FIELDSPEC_SELECT = '^(((`[[^`]+]`|\[[^\]]+\]|[A-Za-z_]\w*)\.)*(`[[^`]+]`|\[[^\]]+\]|[A-Za-z_]\w*))(\s+as\s+(`[[^`]+]`|\[[^\]]+\]|[A-Za-z_]\w*))?$';
-	public const REGEX_FIELDSPEC_WHERE = '^(((`[[^`]+]`|\[[^\]]+\]|[A-Za-z_]\w*)\.)+)?(`[[^`]+]`|\[[^\]]+\]|[A-Za-z_]\w*)$';
-
 	protected function prepareValue($value)
 	{
+		if (is_array($value)) {
+			$passed = [];
+			foreach ($value as $subvalue) {
+				$passed[] = $this->prepareValue($subvalue);
+			}
+			return '(' . implode(',', $passed) . ')';
+		}
+		//
 		if ($value instanceof Expression) {
 			return (string) $value->getValue();
 		}
 		//
-		if (preg_match('#^(\:n\d+\:)$#i', $value, $found)) {
-			$value = $this->retrieveBound($found[1]);
+		if ($value instanceof Builder) {
+			return '(' . $value->toSql() . ')';
 		}
 		//
-		if (preg_match(('#' . self::REGEX_FIELDSPEC_WHERE . '#i'), $value)) {
+		if (preg_match('#^(\:n\d+\:)$#i', $value, $found)) {
+			return $this->retrieveBound($found[1]);
+		}
+		//
+		if (preg_match($this->getRegexFieldspecWhere(), $value)) {
 			return $value;
 		}
 		//
@@ -215,7 +227,7 @@ class Builder
 
 	public static function new()
 	{
-		return new static(new Connection, new Grammar, new Processor);
+		return new static(new Connection(), new Grammar(), new Processor());
 	}
 
 	public function newQuery()
@@ -236,6 +248,13 @@ class Builder
 		$columns = is_array($columns) ? $columns : func_get_args();
 		//
 		$this->addColumns($columns);
+		//
+		return $this;
+	}
+
+	public function distinct()
+	{
+		$this->distinct = true;
 		//
 		return $this;
 	}
@@ -371,6 +390,38 @@ class Builder
 		return $this->where($column, $operator, $value, 'or');
 	}
 
+	protected function wheresToChain(array $wheres)
+	{
+		$chain = [];
+		$total = $count = count($this->wheres);
+		//
+		foreach ($this->wheres as $item) {
+			if ($count < $total) {
+				$chain[] = $item[4];
+			}
+			//
+			$type = $item[0];
+			//
+			if ($type=='basic') {
+				$item[3] = $this->prepareValue(
+					$this->prepareValue($item[3])
+				);
+				//
+				$chain[] = $this->grammar->compileExpression(
+					$item[1], $item[2], $item[3]
+				);
+			} elseif ($type=='nested') {
+				$chain[] = $this->grammar->compileExists(
+					$item[1]->toSql()
+				);
+			}
+			//
+			--$count;
+		}
+		//
+		return $chain;
+	}
+
 	public function toSql()
 	{
 		$sql = '';
@@ -392,30 +443,12 @@ class Builder
 				$columns[] = $column;
 			}
 			//
-			$sql = ' SELECT ' . implode(', ', $this->columns)
-				. ' FROM ' . $this->from
-				. ' ' . implode(' ', $this->joins ?? []);
+			$sql = $this->grammar->compileSelect(
+				$this->columns, $this->from, $this->joins ?? [], $this->distinct
+			);
 		}
 		//
-		$whereChain = [];
-		$total = $count = count($this->wheres);
-		//
-		foreach ($this->wheres as $item) {
-			if ($count < $total) {
-				$whereChain[] = $item[4];
-			}
-			//
-			$type = $item[0];
-			//
-			if ($type=='basic') {
-				$val = $this->prepareValue($item[3]);
-				$whereChain[] = "({$item[1]} {$item[2]} {$val})";
-			} elseif ($type=='nested') {
-				$whereChain[] = '(' . $item[1]->toSql() . ')';
-			}
-			//
-			--$count;
-		}
+		$whereChain = $this->wheresToChain($this->wheres);
 		//
 		if ($this instanceof JoinClause) {
 			$type = strtoupper($this->type);
@@ -427,13 +460,9 @@ class Builder
 				$table = $table[$as]->toSql();
 			}
 			//
-			$sql .= (
-				($as)
-					? " {$type} JOIN ({$table}) AS {$as} ON "
-					: " {$type} JOIN {$table} ON "
-			) . implode(' ', $whereChain);
+			$sql .= $this->grammar->compileJoin($type, $table, $as, $whereChain);
 		} else {
-			$sql .= ' WHERE ' . implode(' ', $whereChain);
+			$sql .= $this->grammar->compileWhereChain($whereChain);
 		}
 		//
 
