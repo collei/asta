@@ -3,7 +3,7 @@ require __DIR__ . '/vendor/autoload.php';
 
 use Asta\Database\Query\Builder;
 
-$client_supplied_flithy_data = "\'%d\'--\r\n select * from usuarios ";
+$client_supplied_flithy_data = "%d' or 1=1 or ''='"; //%d\'--\r\n select * from usuarios ";
 
 $subquery = Builder::new()->from('attendants', 'a')
 	->join('homes','homes.city','city')

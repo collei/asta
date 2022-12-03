@@ -51,6 +51,32 @@ class Grammar
 		return '\'' . str_replace('\'', '', $value) . '\'';		
 	}
 
+	public function wrapItInParenthesis(string $thing)
+	{
+		$par = 0;
+		$expression = '(' . $thing . ')';
+		$count = strlen($expression);
+		//
+		for ($pos = 0; $pos < $count; $pos++) {
+			$ch = substr($expression, $pos, 1);
+			if ('(' == $ch) {
+				++$par;
+			} elseif (')' == $ch) {
+				--$par;
+			}
+		}
+		//
+		if ($par > 0) while ($par > 0) {
+			$expression .= ')';
+			--$par;
+		} elseif ($par < 0) while ($par < 0) {
+			$expression = '(' . $expression;
+			++$par;
+		}
+		//
+		return $expression;
+	}
+
 	public function compileSelect(
 		array $columns, $from, array $joins = [], bool $distinct = false
 	) {
@@ -83,6 +109,11 @@ class Grammar
 	public function compileExists($subquery)
 	{
 		return " EXISTS ({$subquery})";
+	}
+
+	public function compileAliasing(string $thing, string $as)
+	{
+		return "{$thing} AS {$as}";
 	}
 
 

@@ -23,20 +23,64 @@ class Builder
 {
 	use CastsValues;
 
+	/**
+	 * @var int
+	 */
 	private static $bindingCounter = 0;
 
+	/**
+	 * @var array
+	 */
 	protected $columns;
+
+	/**
+	 * @var array
+	 */
 	protected $from;
+
+	/**
+	 * @var array
+	 */
 	protected $joins;
+
+	/**
+	 * @var array
+	 */
 	protected $wheres = [];
+
+	/**
+	 * @var array
+	 */
 	protected $groups;
+
+	/**
+	 * @var array
+	 */
 	protected $havings;
+
+	/**
+	 * @var array
+	 */
 	protected $orders;
+
+	/**
+	 * @var int|null
+	 */
 	protected $limit = null;
+
+	/**
+	 * @var int|null
+	 */
 	protected $offset = null;
 
+	/**
+	 * @var bool
+	 */
 	protected $distinct = false;
 
+	/**
+	 * @var array
+	 */
 	protected $bindings = [
 		'select' => [],
 		'from' => [],
@@ -49,6 +93,9 @@ class Builder
 		'unionOrder' => [],
 	];
 
+	/**
+	 * @var array
+	 */
 	private $operators = [
 		'=', '<', '<=', '>', '>=', '<>', '!=', '<=>',
 		'like', 'like binary', 'not like', 'ilike',
@@ -58,40 +105,82 @@ class Builder
 		'not ilike', '~~*', '!~~*'
 	];
 
+	/**
+	 * @var array
+	 */
 	private $bitwiseOperators = [
 		'&', '|', '^', '<<', '>>', '&~',
 	];
 
+	/**
+	 * @var Connection
+	 */
 	private $connection;
+
+	/**
+	 * @var Grammar
+	 */
 	private $grammar;
+
+	/**
+	 * @var Processor
+	 */
 	private $processor;
 
+	/**
+	 * Returns the Builder's connection
+	 *
+	 * @return ConnectionInterface
+	 */
 	protected function getConnection()
 	{
 		return $this->connection;
 	}
 
+	/**
+	 * Returns the Builder's grammar
+	 *
+	 * @return Grammar
+	 */
 	protected function getGrammar()
 	{
 		return $this->grammar;
 	}
 
+	/**
+	 * Returns the Builder's processor
+	 *
+	 * @return Processor
+	 */
 	protected function getProcessor()
 	{
 		return $this->processor;
 	}
 
+	/**
+	 * Adds columns to the select clause
+	 *
+	 * @param array $columns
+	 * @return void
+	 */
 	protected function addColumns(array $columns)
 	{
 		foreach ($columns as $as => $column) {
 			if (is_string($as)) {
-				$this->columns[] = "{$column} as {$as}";
+				$this->columns[] = $this->compileAliasing($column, $as);
 			} else {
 				$this->columns[] = $column;
 			}
 		}
 	}
 
+	/**
+	 * Adds a value binding
+	 *
+	 * @param mixed $value
+	 * @param string $type = 'where'
+	 * @return string
+	 */
 	protected function addBinding($value, string $type = 'where')
 	{
 		if (!array_key_exists($type, $this->bindings)) {
@@ -105,13 +194,33 @@ class Builder
 		return $next;
 	}
 
+	/**
+	 * Gets bindings from another Builder
+	 *
+	 * @param self $query
+	 * @param mixed $type = 'where'
+	 * @return void
+	 */
 	protected function importBindingsFromSubquery(self $query, $type = 'where')
 	{
-		foreach ($query->getBindings('where') as $binder => $bound) {
-			$this->bindings['where'][$binder] = $bound;
+		$type = $type ?? 'where';
+		//
+		if (!array_key_exists($type, $this->bindings)) {
+			throw new InvalidArgumentException("Invalid binding type: {$type}.");
+		}
+		//
+		foreach ($query->getBindings($type) as $binder => $bound) {
+			$this->bindings[$type][$binder] = $bound;
 		}
 	}
 
+	/**
+	 * Gets value from a given binding item
+	 *
+	 * @param mixed $binder
+	 * @param string $type = 'where'
+	 * @return mixed
+	 */
 	protected function retrieveBound($binder, string $type = null)
 	{
 		if (!is_null($type)) {
@@ -137,6 +246,12 @@ class Builder
 		throw new InvalidArgumentException("This binding does not exist: {$binder}.");
 	}
 
+	/**
+	 * Returns the giving binding set
+	 *
+	 * @param string $type = 'where'
+	 * @return array
+	 */
 	protected function getBindings(string $type = 'where')
 	{
 		if (!array_key_exists($type, $this->bindings)) {
@@ -146,12 +261,24 @@ class Builder
 		return $binds = $this->bindings[$type];
 	}
 
+	/**
+	 * Tells if $operator is not a valid operator
+	 *
+	 * @param mixed $operator
+	 * @return bool
+	 */
 	protected function invalidOperator($operator)
 	{
 		return (! is_string($operator))
 			|| (! in_array(strtolower($operator), $this->operators, true)); 
 	}
 
+	/**
+	 * Tells if $operator is a bitwise operator
+	 *
+	 * @param mixed $operator
+	 * @return bool
+	 */
 	protected function isBitwiseOperator($operator)
 	{
 		return in_array(strtolower($operator), $this->operators, true);
@@ -192,7 +319,7 @@ class Builder
 			foreach ($value as $subvalue) {
 				$passed[] = $this->prepareValue($subvalue);
 			}
-			return '(' . implode(',', $passed) . ')';
+			return $this->grammar->wrapItInParenthesis(implode(',', $passed));
 		}
 		//
 		if ($value instanceof Expression) {
@@ -200,14 +327,14 @@ class Builder
 		}
 		//
 		if ($value instanceof Builder) {
-			return '(' . $value->toSql() . ')';
+			return $this->grammar->wrapItInParenthesis($value->toSql());
 		}
 		//
 		if (preg_match('#^(\:n\d+\:)$#i', $value, $found)) {
 			return $this->retrieveBound($found[1]);
 		}
 		//
-		if (preg_match($this->getRegexFieldspecWhere(), $value)) {
+		if (preg_match($this->grammar->getRegexFieldspecWhere(), $value)) {
 			return $value;
 		}
 		//
@@ -264,7 +391,9 @@ class Builder
 		$callback = $query;
 		$callback($query = $this->forSubQuery());
 		$query = $query->toSql();
-		$this->columns[] = "($query) as {$as}";
+		$this->columns[] = $this->grammar->compileAliasing(
+			$this->grammar->wrapItInParenthesis($query), $as
+		);
 		//
 		return $this;
 	}
@@ -275,13 +404,27 @@ class Builder
 			return $this->fromSub($table, $as);
 		}
 		//
-		$this->from = $as ? "{$table} as {$as}" : $table;
+		$this->from = $as
+			? $this->grammar->compileAliasing($table, $as)
+			: $table;
 		//
 		return $this;
 	}
 
-	public function join($table, $first, $operator = null, $second = null, $type = 'inner', $where = false)
+	public function fromSub(Closure $table, string $as)
 	{
+		$table($query = $this->forSubQuery());
+		//
+		$this->from = $this->grammar->compileAliasing(
+			$this->grammar->wrapItInParenthesis($query->toSql()), $as
+		);
+		//
+		return $this;
+	}
+
+	public function join(
+		$table, $first, $operator = null, $second = null, $type = 'inner', $where = false
+	) {
 		$join = JoinClause::make($this, $type, $table);
 		//
 		if ($first instanceof Closure) {
