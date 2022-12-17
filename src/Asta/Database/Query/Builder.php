@@ -24,9 +24,14 @@ class Builder
 	use CastsValues;
 
 	/**
-	 * @var int
+	 * @static @var int
 	 */
 	private static $bindingCounter = 0;
+
+	/**
+	 * @static @var int
+	 */
+	private static $aliasingCounter = 0;
 
 	/**
 	 * @var array
@@ -172,6 +177,11 @@ class Builder
 				$this->columns[] = $column;
 			}
 		}
+	}
+
+	protected function generateAlias()
+	{
+		return ('A' . (++self::$aliasingCounter));
 	}
 
 	/**
@@ -533,6 +543,16 @@ class Builder
 		return $this->where($column, $operator, $value, 'or');
 	}
 
+	public function whereIn($column, $values)
+	{
+		return $this->where($column, 'IN', $values, 'and');
+	}
+
+	public function orWhereIn($column, $values)
+	{
+		return $this->where($column, 'IN', $values, 'or');
+	}
+
 	protected function wheresToChain(array $wheres)
 	{
 		$chain = [];
@@ -570,18 +590,27 @@ class Builder
 		$sql = '';
 		$headed = false;
 		//
-		if (isset($this->columns) && isset($this->from)) {
+		if (!isset($this->columns)) {
+			$this->columns = ['*'];
+		}
+		//
+		if (isset($this->from)) {
 			$headed = true;
 			$columns = [];
 			//
-			foreach ($this->columns as $column) {
+			foreach ($this->columns as $as => $column) {
 				if ($column instanceof Closure) {
 					$callback = $column;
 
 					$callback($query = $this->forSubQuery());
 
-					$column = $query->toSql();
-				};
+					$column = $this->grammar->compileAliasing(
+						$query->toSql(),
+						(is_int($as) ? $this->generateAlias() : $as)
+					);
+				} elseif ($column instanceof Expression) {
+					$column = $column->getValue();
+				}
 				//
 				$columns[] = $column;
 			}

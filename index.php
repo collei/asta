@@ -3,6 +3,42 @@ require __DIR__ . '/vendor/autoload.php';
 
 use Asta\Database\Query\Builder;
 
+
+function prettyPrintNestedParenthesis($text, bool $return = false)
+{
+	$delim = null;
+	$delims_open = ['{','[','(','<','"',"'"];
+	$delims_close = ['}',']',')','>','"',"'"];
+	$crlf = ["\r","\n","\r\n"];
+	$res = '';
+	$tab = '    ';
+	$tabs = 0;
+	$charlist = str_split($text);
+	//
+	foreach ($charlist as $ch) {
+		if ('(' == $ch) {
+			++$tabs;
+			$res .= $ch . $crlf[2] . str_repeat($tab, $tabs);
+		} elseif (')' == $ch) {
+			--$tabs;
+			$res .= $crlf[2] . str_repeat($tab, $tabs) . $ch;
+		} else {
+			$res .= $ch;
+		}
+	}
+	//
+	if ($return) {
+		return $res;
+	}
+	//
+	echo $res;
+}
+
+
+
+
+
+
 $client_supplied_flithy_data = "%d' or 1=1 or ''='"; //%d\'--\r\n select * from usuarios ";
 
 $subquery = Builder::new()->from('attendants', 'a')
@@ -12,7 +48,9 @@ $subquery = Builder::new()->from('attendants', 'a')
 	->orWhere('name','like','%s')
 	->orWhere('name','like',$client_supplied_flithy_data);
 
-$subwhere = Builder::new()->from('allowed_names')
+$subwhere = Builder::new()->fromSub(function($query){
+		$query->from('names')->whereIn('origin', ['JP','EU','HB','AR']);
+	}, 'allowed_names')
 	->select('name')
 	->where('language', 'in', ['en-us','pt-br','jp-jp']);
 
@@ -33,20 +71,20 @@ $querist = Builder::new()->from('clients', 'c')
 
 $sql = $querist->toSql();
 
-$builders = [$querist];
+$builders = compact('subquery','subwhere','querist');
 
 ?>
 <html>
 	<fieldset>
 		<legend>Generated SQL</legend>
-		<?=($sql)?>
+		<pre><?=(prettyPrintNestedParenthesis($sql))?></pre>
 	</fieldset>
 	<fieldset>
 	<?php 
-	foreach ($builders as $builder) {
+	foreach ($builders as $which => $builder) {
 		?>
 		<fieldset>
-			<legend>Builder Internals</legend>
+			<legend><b>Builder:</b> <i><?=($which)?></i></legend>
 			<pre><?=(print_r($builder, true))?></pre>
 		</fieldset>
 		<?php
