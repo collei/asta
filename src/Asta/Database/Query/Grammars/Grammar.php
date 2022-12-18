@@ -13,6 +13,29 @@ use DateTimeInterface;
  */
 class Grammar
 {
+	private $leadingSpace = true;
+	private $trailingSpace = false;
+
+	public function setLeadingSpaceMode(bool $mode)
+	{
+		$this->leadingSpace = $mode;
+	}
+
+	public function setTrailingSpaceMode(bool $mode)
+	{
+		$this->trailingSpace = $mode;
+	}
+
+	protected function getLeadingSpace()
+	{
+		return $this->leadingSpace ? ' ' : '';
+	}
+
+	protected function getTrailingSpace()
+	{
+		return $this->trailingSpace ? ' ' : '';
+	}
+
 	public const REGEX_FIELDSPEC_SELECT = '^(((`[[^`]+]`|\[[^\]]+\]|[A-Za-z_]\w*)\.)*(`[[^`]+]`|\[[^\]]+\]|[A-Za-z_]\w*))(\s+as\s+(`[[^`]+]`|\[[^\]]+\]|[A-Za-z_]\w*))?$';
 	public const REGEX_FIELDSPEC_WHERE = '^(((`[[^`]+]`|\[[^\]]+\]|[A-Za-z_]\w*)\.)+)?(`[[^`]+]`|\[[^\]]+\]|[A-Za-z_]\w*)$';
 	
@@ -34,6 +57,15 @@ class Grammar
 	public function valueToSqlInt(int $value)
 	{
 		return (string)$value;
+	}
+
+	public function valueToSqlIntOrFloat(float $value)
+	{
+		if (is_float($value)) {
+			return $this->valueToSqlFloat($value, 4);
+		}
+		//
+		return $this->valueToSqlInt((int)$value);
 	}
 
 	public function valueToSqlFloat(float $value, int $precision = 12)
@@ -82,40 +114,62 @@ class Grammar
 	) {
 		return 'SELECT ' . ($distinct ? 'DISTINCT ' : '')
 			. implode(', ', $columns)
-			. ' FROM ' . $from
-			. ' ' . implode(' ', $joins);
+			. ' FROM ' . trim($from)
+			. (empty($joins) ? '' : (' ' . implode(' ', $joins)))
+			. $this->getTrailingSpace();
 	}
 
 	public function compileJoin(
 		$type, $table, $as = null, array $whereChain = []
 	) {
-		return (
+		return $this->getLeadingSpace() . (
 			($as)
-				? " {$type} JOIN ({$table}) AS {$as} ON "
-				: " {$type} JOIN {$table} ON "
-		) . implode(' ', $whereChain);
+				? "{$type} JOIN ({$table}) AS {$as} ON"
+				: "{$type} JOIN {$table} ON"
+		) . implode(' ', $whereChain) . $this->getTrailingSpace();
 	}
 
 	public function compileWhereChain(array $whereChain)
 	{
-		return ' WHERE ' . implode(' ', $whereChain);
+		return $this->getLeadingSpace()
+			. 'WHERE ' . implode(' ', $whereChain)
+			. $this->getTrailingSpace();
 	}
 
 	public function compileExpression($first, $operator, $last)
 	{
-		return "({$first} {$operator} {$last})";
+		return $this->getLeadingSpace()
+			. "({$first} {$operator} {$last})"
+			. $this->getTrailingSpace();
 	}
 
 	public function compileExists($subquery)
 	{
-		return " EXISTS ({$subquery})";
+		return $this->getLeadingSpace()
+			. "EXISTS ({$subquery})"
+			. $this->getTrailingSpace();
 	}
 
 	public function compileAliasing(string $thing, string $as)
 	{
-		return "{$thing} AS {$as}";
+		return $this->getLeadingSpace()
+			. "{$thing} AS {$as}"
+			. $this->getTrailingSpace();
 	}
 
+	public function compileOffsetClause(int $limit)
+	{
+		return $this->getLeadingSpace()
+			. 'OFFSET ' . $this->valueToSqlInt($limit) . ' ROWS'
+			. $this->getTrailingSpace();
+	}
+
+	public function compileLimitClause(int $limit)
+	{
+		return $this->getLeadingSpace()
+			. 'FETCH NEXT ' . $this->valueToSqlInt($limit) . ' ROWS ONLY'
+			. $this->getTrailingSpace();
+	}
 
 
 

@@ -595,6 +595,30 @@ class Builder
 		return $this->where($column, 'IN', $values, 'or');
 	}
 
+	public function limit(int $count)
+	{
+		$this->limit = $count;
+		//
+		return $this;
+	}
+
+	public function take(int $count)
+	{
+		return $this->limit($count);
+	}
+
+	public function offset(int $count)
+	{
+		$this->offset = $count;
+		//
+		return $this;
+	}
+
+	public function skip(int $count)
+	{
+		return $this->offset($count);
+	}
+
 	protected function wheresToChain(array $wheres)
 	{
 		$chain = [];
@@ -682,7 +706,13 @@ class Builder
 			$sql .= $this->grammar->compileWhereChain($whereChain);
 		}
 		//
-
+		if ($this->offset) {
+			$sql .= $this->grammar->compileOffsetClause($this->limit);
+		}
+		//
+		if ($this->limit) {
+			$sql .= $this->grammar->compileLimitClause($this->limit);
+		}
 		//
 		return $sql;
 	}
