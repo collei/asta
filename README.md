@@ -1,6 +1,6 @@
 # Collei Asta
-Simple database tools for any project, designed to not depend on external dependencies as much as possible.
-This also aims to be integrated into the Collei Framework as its database access solution. 
+Simple database query builder tool for any project, designed to not depend on external dependencies as much as possible.
+This also aims to be integrated into the Collei Framework as its database access solution.
 
 ### Why Asta?
 Asta is named after that Honkai Star Rail game character.

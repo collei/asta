@@ -194,7 +194,9 @@ class Builder
 	protected function addBinding($value, string $type = 'where')
 	{
 		if (!array_key_exists($type, $this->bindings)) {
-			throw new InvalidArgumentException("Invalid binding type: {$type}.");
+			throw new InvalidArgumentException(
+				"Invalid binding type: {$type}."
+			);
 		}
 		//
 		$next = ':n' . (++self::$bindingCounter) . ':';
@@ -216,7 +218,9 @@ class Builder
 		$type = $type ?? 'where';
 		//
 		if (!array_key_exists($type, $this->bindings)) {
-			throw new InvalidArgumentException("Invalid binding type: {$type}.");
+			throw new InvalidArgumentException(
+				"Invalid binding type: {$type}."
+			);
 		}
 		//
 		foreach ($query->getBindings($type) as $binder => $bound) {
@@ -235,11 +239,15 @@ class Builder
 	{
 		if (!is_null($type)) {
 			if (!array_key_exists($type, $this->bindings)) {
-				throw new InvalidArgumentException("Invalid binding type: {$type}.");
+				throw new InvalidArgumentException(
+					"Invalid binding type: {$type}."
+				);
 			}
 			//
 			if (!array_key_exists($binder, $this->bindings[$type])) {
-				throw new InvalidArgumentException("Binding not found: {$binder}.");
+				throw new InvalidArgumentException(
+					"Binding not found: {$binder}."
+				);
 			}
 			//
 			return $this->bindings[$type][$binder];
@@ -253,7 +261,9 @@ class Builder
 			}
 		}
 		//
-		throw new InvalidArgumentException("This binding does not exist: {$binder}.");
+		throw new InvalidArgumentException(
+			"This binding does not exist: {$binder}."
+		);
 	}
 
 	/**
@@ -265,7 +275,9 @@ class Builder
 	protected function getBindings(string $type = 'where')
 	{
 		if (!array_key_exists($type, $this->bindings)) {
-			throw new InvalidArgumentException("Invalid binding type: {$type}.");
+			throw new InvalidArgumentException(
+				"Invalid binding type: {$type}."
+			);
 		}
 		//
 		return $binds = $this->bindings[$type];
@@ -433,7 +445,8 @@ class Builder
 	}
 
 	public function join(
-		$table, $first, $operator = null, $second = null, $type = 'inner', $where = false
+		$table, $first,
+		$operator = null, $second = null, $type = 'inner', $where = false
 	) {
 		$join = JoinClause::make($this, $type, $table);
 		//
@@ -449,39 +462,67 @@ class Builder
 		return $this;
 	}
 
-	public function leftJoin($table, $first, $operator = null, $second = null, $where = false)
-	{
-		return $this->join($table, $first, $operator, $second, 'left', $where);
+	public function leftJoin(
+		$table, $first,
+		$operator = null, $second = null, $where = false
+	) {
+		return $this->join(
+			$table, $first, $operator, $second, 'left', $where
+		);
 	}
 
-	public function rightJoin($table, $first, $operator = null, $second = null, $where = false)
-	{
-		return $this->join($table, $first, $operator, $second, 'right', $where);
+	public function rightJoin(
+		$table, $first,
+		$operator = null, $second = null, $where = false
+	) {
+		return $this->join(
+			$table, $first, $operator, $second, 'right', $where
+		);
 	}
 
-	public function crossJoin($table, $first, $operator = null, $second = null, $where = false)
-	{
-		return $this->join($table, $first, $operator, $second, 'cross', $where);
+	public function crossJoin(
+		$table, $first,
+		$operator = null, $second = null, $where = false
+	) {
+		return $this->join(
+			$table, $first, $operator, $second, 'cross', $where
+		);
 	}
 
-	public function joinSub(Builder $query, $as, Closure $first, $operator = null, $second = null, $type = 'inner', $where = false)
-	{
-		return $this->join([$as => $query], $first, $operator, $second, $type, $where);
+	public function joinSub(
+		Builder $query, $as, Closure $first,
+		$operator = null, $second = null, $type = 'inner', $where = false
+	) {
+		return $this->join(
+			[$as => $query], $first, $operator, $second, $type, $where
+		);
 	}
 
-	public function leftJoinSub(Builder $query, $as, Closure $first, $operator = null, $second = null, $where = false)
-	{
-		return $this->joinSub($query, $as, $first, $operator, $second, 'left', $where);
+	public function leftJoinSub(
+		Builder $query, $as, Closure $first,
+		$operator = null, $second = null, $where = false
+	) {
+		return $this->joinSub(
+			$query, $as, $first, $operator, $second, 'left', $where
+		);
 	}
 
-	public function rightJoinSub(Builder $query, $as, Closure $first, $operator = null, $second = null, $where = false)
-	{
-		return $this->joinSub($query, $as, $first, $operator, $second, 'right', $where);
+	public function rightJoinSub(
+		Builder $query, $as, Closure $first,
+		$operator = null, $second = null, $where = false
+	) {
+		return $this->joinSub(
+			$query, $as, $first, $operator, $second, 'right', $where
+		);
 	}
 
-	public function crossJoinSub(Builder $query, $as, Closure $first, $operator = null, $second = null, $where = false)
-	{
-		return $this->joinSub($query, $as, $first, $operator, $second, 'cross', $where);
+	public function crossJoinSub(
+		Builder $query, $as, Closure $first,
+		$operator = null, $second = null, $where = false
+	) {
+		return $this->joinSub(
+			$query, $as, $first, $operator, $second, 'cross', $where
+		);
 	}
 
 	protected function addBasicWhere(
@@ -504,10 +545,11 @@ class Builder
 		$this->importBindingsFromSubquery($query, 'where');
 	}
 
-	public function where($column, $operator = null, $value = null, $boolean = 'and')
-	{
+	public function where(
+		$column, $operator = null, $value = null, $boolean = 'and'
+	) {
 		$boolean = (strtolower($boolean) === 'and') ? 'and' : 'or';
-
+		//
 		if (is_array($column)) {
 			foreach ($column as $name => $value) {
 				$this->addBasicWhere($name, '=', $value, $boolean);
@@ -616,7 +658,10 @@ class Builder
 			}
 			//
 			$sql = $this->grammar->compileSelect(
-				$this->columns, $this->from, $this->joins ?? [], $this->distinct
+				$this->columns,
+				$this->from,
+				($this->joins ?? []),
+				$this->distinct
 			);
 		}
 		//
