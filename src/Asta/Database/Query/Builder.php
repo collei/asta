@@ -717,6 +717,15 @@ class Builder
 		return $sql;
 	}
 
+	public function __toString()
+	{
+		return $this->toSql();
+	}
+
+	public static function raw(string $expression)
+	{
+		return new Expression($expression);
+	}
 
 }
 

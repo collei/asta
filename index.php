@@ -52,7 +52,8 @@ $subwhere = Builder::new()->fromSub(function($query){
 		$query->from('names')->whereIn('origin', ['JP','EU','HB','AR']);
 	}, 'allowed_names')
 	->select('name')
-	->where('language', 'in', ['en-us','pt-br','jp-jp']);
+	->where('language', 'in', ['en-us','pt-br','jp-jp'])
+	->orWhere('fosters', Builder::raw('homes.city'));
 
 $querist = Builder::new()->from('clients', 'c')
 	->join('requests as r','c.id','=','r.id_client')
