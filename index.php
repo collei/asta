@@ -39,14 +39,14 @@ function prettyPrintNestedParenthesis($text, bool $return = false)
 
 
 
-$client_supplied_flithy_data = "%d' or 1=1 or ''='"; //%d\'--\r\n select * from usuarios ";
+$client_supplied_flithy_data = "d' or 1=1 or ''='"; //%d\'--\r\n select * from usuarios ";
 
 $subquery = Builder::new()->from('attendants', 'a')
 	->join('homes','homes.city','city')
 	->select('name','age','city')
 	->where('name','like','%z')
 	->orWhere('name','like','%s')
-	->orWhere('name','like',$client_supplied_flithy_data);
+	->orWhere('name','like',"%{$client_supplied_flithy_data}%");
 
 $subwhere = Builder::new()->fromSub(function($query){
 		$query->from('names')->whereIn('origin', ['JP','EU','HB','AR']);

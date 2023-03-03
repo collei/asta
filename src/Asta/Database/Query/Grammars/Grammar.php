@@ -61,11 +61,18 @@ class Grammar
 
 	public function valueToSqlIntOrFloat(float $value)
 	{
-		if (is_float($value)) {
-			return $this->valueToSqlFloat($value, 4);
+		if (round($value) == $value) {
+			return $this->valueToSqlInt((int)$value);
 		}
 		//
-		return $this->valueToSqlInt((int)$value);
+		$precision = 1;
+		while (round($value, $precision) != $value) {
+			++$precision;
+			//
+			if ($precision > 15) { break; }
+		}
+		//
+		return $this->valueToSqlFloat($value, $precision);
 	}
 
 	public function valueToSqlFloat(float $value, int $precision = 12)
