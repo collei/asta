@@ -2,10 +2,16 @@
 namespace Asta\Database\Repository;
 
 use InvalidArgumentException;
+
+use Asta\Database\Interfaces\Repository\CasterProperties;
+
 use Asta\Database\DatabaseException;
 use Asta\Database\Query\Builder;
 use Asta\Database\Relations\OneToMany;
 use Asta\Database\Relations\ManyToMany;
+use Asta\Database\Interfaces\Repository\Castable;
+use Asta\Database\Interfaces\Repository\CastsInboundAttributes;
+use Asta\Database\Interfaces\Repository\CastsAttributes;
 use Jeht\Interfaces\Support\Jsonable;
 use Jeht\Support\Arr;
 use Jeht\Support\Str;
@@ -29,21 +35,6 @@ abstract class Model implements Jsonable
 	 *	@var \Asta\Database\Query\Builder $builder
 	 */
 	private $builder = null;
-
-	/**
-	 *	@var array $cache
-	 */
-	private $cache = [];
-
-	/**
-	 *	@var bool $is_changed
-	 */
-	private $is_changed = false;
-
-	/**
-	 *	@var bool $is_new
-	 */
-	private $is_new = true;
 
 	/**
 	 *	@var array $attributes
@@ -83,6 +74,11 @@ abstract class Model implements Jsonable
 	/**
 	 *	@var array
 	 */
+	protected $castCache = [];
+
+	/**
+	 *	@var array
+	 */
 	protected static $primitiveCastTypes = [
 		'array',
 		'bool',
@@ -106,16 +102,26 @@ abstract class Model implements Jsonable
 	/**
 	 *	@var array
 	 */
-	protected $classCastCache = [];
+	protected $dates = [];
 
 	/**
-	 *	Keep caching of the results.
-	 *
+	 *	@var string
 	 */
-	protected $relationCache = [
-		'has_many' => [],
-		'belongs_to' => [],
-		'belongs_to_many' => []
+	protected $dateFormat = 'd/m/Y H:i';
+
+	/**
+	 *	@var @static array
+	 */
+	protected const DATE_FORMATS = [
+		'd/m/Y' => '#(0?[0-9]|[12][1-9]|3[01])\\/(0?[0-9]|1[012])\\/(\d{4})#',
+		'd-m-Y' => '#(0?[0-9]|[12][1-9]|3[01])-(0?[0-9]|1[012])-(\d{4})#',
+		'd.m.Y' => '#(0?[0-9]|[12][1-9]|3[01])\\.(0?[0-9]|1[012])\\.(\d{4})#',
+		'Y/m/d' => '#(\d{4})\\/(0?[0-9]|1[012])\\/(0?[0-9]|[12][1-9]|3[01])#',
+		'Y-m-d' => '#(\d{4})-(0?[0-9]|1[012])-(0?[0-9]|[12][1-9]|3[01])#',
+		'Y.m.d' => '#(\d{4})\\.(0?[0-9]|1[012])\\.(0?[0-9]|[12][1-9]|3[01])#',
+		'm/d/Y' => '#(0?[0-9]|1[012])\\/(0?[0-9]|[12][1-9]|3[01])\\/(\d{4})#',
+		'm-d-Y' => '#(0?[0-9]|1[012])-(0?[0-9]|[12][1-9]|3[01])-(\d{4})#',
+		'm.d.Y' => '#(0?[0-9]|1[012])\\.(0?[0-9]|[12][1-9]|3[01])\\.(\d{4})#',
 	];
 
 	/**
@@ -134,349 +140,202 @@ abstract class Model implements Jsonable
 	 *
 	 * @return string
 	 */
-	public static function tableFromClassName()
+	protected static function catterTableName()
 	{
 		$names = explode('\\', get_class());
 		//
-		$name = strtolower(
-			preg_replace('/([A-Z][^A-Z]+)/', '_\1', array_pop($names))
-		);
-		//
-		if ('_' === substr($name,0,1)) {
-			return substr($name, 1);
-		}
-		//
-		return $name;
+		return Str::pluralize(Str::snake(array_pop($names)));
 	}
 
 	/**
-	 * Returns the table column as qualified with table name.
+	 * Catter the attribute getter name.
 	 *
-	 * @param string $column
+	 * @param string $name
 	 * @return string
 	 */
-	public function qualifyColumn(string $column)
-	{
-		if (strpos($column, '.') > 0) {
-			return $column;
-		}
-		//
-		return $this->getTable().'.'.$column;
-	}
-
-	/**
-	 * Determine if two models have the same ID and belong to the same table.
-	 *
-	 * @param \Asta\Database\Repository\Model|null $model
-	 * @return bool
-	 */
-	public function is($model)
-	{
-		return !is_null($model)
-			&& $this->getKey() === $model->getKey()
-			&& $this->getTable() === $model->getTable()
-			&& $this->getConnectionName() === $model->getConnectionName();
-	}
-
-	/**
-	 *	Verify if $that is equals to the current instance
-	 *
-	 *	@param	\Asta\Database\Yanfei\Model	$that
-	 *	@return	bool
-	 */
-	public final function equals(Model $that = null)
-	{
-		if (is_null($that)) {
-			return false;
-		}
-		//
-		if (!($that instanceof static)) {
-			return false;
-		}
-		//
-		if (count($this->attributes) != count($that->attributes)) {
-			return false;
-		}
-		//
-		foreach ($this->attributes as $n => $v) {
-			if ($v != $that->attributes[$n]) {
-				return false;
-			}
-		}
-		//
-		return true;
-	}
-
-	/**
-	 *	Returns the table name from the model class name
-	 *
-	 *	@return	string
-	 */
-	private function nameFromModel()
-	{
-		return $this->entityNameFromModel() . 's';
-	}
-
-	/**
-	 *	Calculates and returns the table name from the model class name
-	 *
-	 *	@return	string
-	 */
-	private function entityNameFromModel()
-	{
-		$classname = get_class($this);
-		if ($pos = strrpos($classname, '\\')) {
-			$classname = substr($classname, $pos + 1);
-		}
-		//
-		return Str::toSnake($classname);
-	}
-
-	/**
-	 *	Attaches a given query
-	 *
-	 *	@param	mixed	$builder
-	 */
-	protected function setSourceQuery($builder)
-	{
-		$this->builder = $builder;
-	}
-
-	/**
-	 *	Returns the table name
-	 *
-	 *	@return	string
-	 */
-	public function getTable()
-	{
-		return $this->table ?? $this->nameFromModel();
-	}
-
-	/**
-	 *	Returns the related attributes (sub-entites and so on)
-	 *	defined as it by the user
-	 *
-	 *	@return	array
-	 */
-	public function getRelated()
-	{
-		return $this->related ?? [];
-	}
-
-	/**
-	 *	Returns the entity name
-	 *
-	 *	@return	string
-	 */
-	public function getEntity()
-	{
-		return $this->entityNameFromModel();
-	}
-
-	/**
-	 *	Returns the name of the primary key field
-	 *
-	 *	@return	string
-	 */
-	public function getKey()
-	{
-		return $this->primaryKey ?? 'id';
-	}
-
-	/**
-	 *	Returns the data type of the primary key field
-	 *
-	 *	@return	string
-	 */
-	public function getKeyType()
-	{
-		return $this->keyType ?? 'integer';
-	}
-
-	/**
-	 *	Returns the name of the created_at field
-	 *
-	 *	@return	string
-	 */
-	protected function getCreatedAt()
-	{
-		return $this->created_at ?? 'created_at';
-	}
-
-	/**
-	 *	Returns the name of the updated_at field
-	 *
-	 *	@return	string
-	 */
-	protected function getUpdatedAt()
-	{
-		return $this->updated_at ?? 'updated_at';
-	}
-
-	/**
-	 *	Returns whether there is an incrementing field in the model's table
-	 *
-	 *	@return	bool
-	 */
-	protected function isIncrementing()
-	{
-		return $this->incrementing ?? true;
-	}
-
-	/**
-	 *	Returns whether $fieldName is writeable or not
-	 *
-	 *	@return	bool
-	 */
-	protected function isFillable(string $fieldName)
-	{
-		return in_array($fieldName, $this->fillable ?? []);
-	}
-
-	/**
-	 *	Returns whether $fieldName is readonly
-	 *
-	 *	@return	bool
-	 */
-	protected function isReadonly(string $fieldName)
-	{
-		return in_array($fieldName, $this->readonly ?? []);
-	}
-
-	/**
-	 *	Ask if $fieldName does exist for the model
-	 *
-	 *	@return	bool
-	 */
-	protected function hasField(string $fieldName)
-	{
-		return ($this->getKey() == $fieldName)
-			|| in_array($fieldName, $this->fillable ?? [])
-			|| in_array($fieldName, $this->readonly ?? []);
-	}
-
-	/**
-	 *	Returns whether there are timestamp control fields in the model's table
-	 *
-	 *	@return	bool
-	 */
-	protected function hasTimestamps()
-	{
-		return $this->timestamps ?? false;
-	}
-
-	/**
-	 *	Returns the specified attribute
-	 *
-	 *	@param	string	$name
-	 *	@return	mixed
-	 */
-	protected final function getAttribute($name = null)
-	{
-		if (! $name) {
-			return;
-		}
-		//
-		if (
-			array_key_exists($name, $this->attributes)
-			|| array_key_exists($name, $this->casts)
-			|| $this->hasGetMutator($name)
-			|| $this->isClassCastable($name)
-		) {
-			return $this->getAttributeValue($name);
-		}
-		//
-		if (method_exists(self::class, $name)) {
-			return;
-		}
-		//
-		return $this->getRelationValue($name);
-	}
-
-	protected function hasGetMutator($name)
-	{
-		return method_exists($this, static::getMutatorNameFor($name))
-	}
-
-	protected static function getMutatorNameFor($name)
+	protected static function catterAttributeGetter(string $name)
 	{
 		return 'get'.Str::studly($name).'Attribute';
 	}
 
-	protected function mutateAttribute($name, $value)
+	/**
+	 * Ask if is there any configured attribute getter.
+	 *
+	 * @param string $name
+	 * @return bool
+	 */
+	public function hasAttributeGetter(string $name)
 	{
-		$method = static::getMutatorNameFor($name);
+		return method_exists($this, $this->catterAttributeGetter($name));
+	}
+
+	/**
+	 * Invoke the configured attribute getter.
+	 *
+	 * @param string $name
+	 * @return mixed
+	 */
+	protected function callAttributeGetter(string $name)
+	{
+		$method = $this->catterAttributeGetter($name);
+		//
+		return $this->$method();
+	}
+
+	/**
+	 * Catter the attribute setter name.
+	 *
+	 * @param string $name
+	 * @return string
+	 */
+	protected static function catterAttributeSetter(string $name)
+	{
+		return 'set'.Str::studly($name).'Attribute';
+	}
+
+	/**
+	 * Ask if is there any configured attribute getter.
+	 *
+	 * @param string $name
+	 * @return bool
+	 */
+	public function hasAttributeSetter(string $name)
+	{
+		return method_exists($this, $this->catterAttributeGetter($name));
+	}
+
+	/**
+	 * Invoke the configured attribute getter.
+	 *
+	 * @param string $name
+	 * @param mixed $value
+	 * @return void
+	 */
+	protected function callAttributeSetter(string $name, $value)
+	{
+		$method = $this->catterAttributeSetter($name);
 		//
 		return $this->$method($value);
 	}
 
-	public function getAttributeValue($name)
+	/**
+	 * Retrieves an attribute value.
+	 *
+	 * @param string $name
+	 * @return mixed
+	 */
+	public static function getAttribute(string $name)
 	{
-		return $this->transformModelValue($name, $this->getAttributeFromArray($name));
-	}
-
-	protected function transformModelValue($name, $value)
-	{
-		if ($this->hasGetMutator($name)) {
-			return $this->mutateAttribute($name, $value);
+		if ($this->hasAttributeGetter($name)) {
+			return $this->callAttributeGetter($name);
 		}
 		//
-		if ($this->hasCast($name)) {
-			return $this->castAttribute($name, $value);
+		if ($this->hasConfiguredCast($name)) {
+			return $this->castValue($name, $value);
 		}
 		//
-		return $value;
+		return $this->attributes[$name] ?? null;
 	}
 
-	protected function getAttributeFromArray($name)
+	/**
+	 * Defines an attribute value.
+	 *
+	 * @param string $name
+	 * @param mixed $value
+	 * @return void
+	 */
+	public static function setAttribute(string $name, $value)
 	{
-		return $this->getAttributes()[$key] ?? null;
-	}
-
-	public function getAttributes()
-	{
-		$this->mergeAttributesFromClassCasts();
-		//
-		return $this->attributes;
-	}
-
-	protected function mergeAttributesFromClassCasts()
-	{
-		//
-	}
-
-	protected function isClassCastable($name)
-	{
-		return false;
-	}
-
-	public function setRawAttributes(array $attributes, $sync = false)
-	{
-		$this->attributes = $attributes;
-		//
-		if ($sync) {
-			$this->syncOriginal();
+		if ($this->hasAttributeSetter($name)) {
+			$this->callAttributeSetter($name, $value);
 		}
-		$this->classCastCache = [];
 		//
-		return $this;
+		if ($this->hasConfiguredCast($name)) {
+			$value = $this->castValue($name, $value);
+		}
+		//
+		$this->attributes[$name] = $value;
+	}
+
+	/**
+	 * Check if a cast rule was configured for the field
+	 *
+	 * @param string $name
+	 * @return bool
+	 */
+	protected function hasConfiguredCast(string $name)
+	{
+		return in_array($name, $this->dates) || array_key_exists($name, $this->casts);
+	}
+
+	/**
+	 * Casts values according to the set rules.
+	 *
+	 * @param string $name
+	 * @param mixed $value
+	 * @return string
+	 */
+	protected function castValue(string $name, $value)
+	{
+		if (! $value) {
+			return $value;
+		}
+		//
+		if (! $this->hasConfiguredCast($name)) {
+			return $value;
+		}
+		//
+		$caster = $this->parseCaster($name);
+		//
+		if (in_array($caster->type, self::$primitiveCastTypes)) {
+			return $this->castPrimitiveValue($name, $value, $caster);
+		}
+		//
+		return $this->castThroughCaster($name, $value, $caster);
+	}
+
+	/**
+	 * Parse the caster string into a live anonymous object with properties.
+	 *
+	 * @param string $name
+	 * @return \Asta\Database\Interfaces\Repository\CasterProperties|null
+	 */
+	protected function parseCaster(string $name)
+	{
+		if (! array_key_exists($name, $this->casts)) {
+			return null;
+		}
+		//
+		$caster = $this->casts[$name] . ':';
+		//
+		list($type, $format) = explode(':', $caster, 2);
+		//
+		$format = trim($format, ': 	');
+		//
+		return new class($name, $type, $format) implements CasterProperties {
+			public $name;
+			public $type;
+			public $format;
+			public function __construct($name, $type, $format) {
+				$this->name = $name;
+				$this->type = $type;
+				$this->format = empty($format) ? null : $format;
+			}
+		};
 	}
 
 	/**
 	 * Cast an attribute to a native PHP type.
 	 *
-	 * @param  string  $key
-	 * @param  mixed  $value
-	 * @return mixed
+	 * @param	string	$key
+	 * @param	mixed	$value
+	 * @param	\Asta\Database\Interfaces\Repository\CasterProperties	$caster
+	 * @return	mixed
 	 */
-	protected function castAttribute($key, $value)
+	protected function castPrimitiveValue(string $key, $value, $caster)
 	{
-		$castType = $this->getCastType($key);
-
-		if (is_null($value) && in_array($castType, static::$primitiveCastTypes)) {
-			return $value;
-		}
-
+		$castType = strtolower($caster->type);
+		//
 		switch ($castType) {
 			case 'int':
 			case 'integer':
@@ -486,7 +345,7 @@ abstract class Model implements Jsonable
 			case 'double':
 				return $this->fromFloat($value);
 			case 'decimal':
-				return $this->asDecimal($value, explode(':', $this->getCasts()[$key], 2)[1]);
+				return $this->asDecimal($value, $caster->format);
 			case 'string':
 				return (string) $value;
 			case 'bool':
@@ -502,7 +361,6 @@ abstract class Model implements Jsonable
 			case 'date':
 				return $this->asDate($value);
 			case 'datetime':
-			case 'custom_datetime':
 				return $this->asDateTime($value);
 			case 'timestamp':
 				return $this->asTimestamp($value);
@@ -513,77 +371,6 @@ abstract class Model implements Jsonable
 		}
 
 		return $value;
-	}
-
-
-	/**
-	 * Get the type of cast for a model attribute.
-	 *
-	 * @param  string  $key
-	 * @return string
-	 */
-	protected function getCastType($key)
-	{
-		if ($this->isCustomDateTimeCast($this->getCasts()[$key])) {
-			return 'custom_datetime';
-		}
-
-		if ($this->isDecimalCast($this->getCasts()[$key])) {
-			return 'decimal';
-		}
-
-		return trim(strtolower($this->getCasts()[$key]));
-	}
-
-	/**
-	 * Determine if the cast type is a custom date time cast.
-	 *
-	 * @param  string  $cast
-	 * @return bool
-	 */
-	protected function isCustomDateTimeCast($cast)
-	{
-		return strncmp($cast, 'date:', 5) === 0 ||
-			   strncmp($cast, 'datetime:', 9) === 0;
-	}
-
-	/**
-	 * Determine if the cast type is a decimal cast.
-	 *
-	 * @param  string  $cast
-	 * @return bool
-	 */
-	protected function isDecimalCast($cast)
-	{
-		return strncmp($cast, 'decimal:', 8) === 0;
-	}
-
-	/**
-	 * Returns the defined casts
-	 *
-	 * @return array
-	 */
-	public function getCasts()
-	{
-		if ($this->getIncrementing()) {
-			return array_merge(
-				[$this->getKeyName() => $this->getKeyType()], $this->casts
-			);
-		}
-		//
-		return $this->casts;
-	}
-
-	/**
-	 * Decodes value from json format.
-	 *
-	 * @param string $value
-	 * @param bool $asObject = false
-	 * @return mixed
-	 */
-	public function fromJson($value, $asObject = false)
-	{
-		return json_decode($value, !$asObject);
 	}
 
 	/**
@@ -616,6 +403,18 @@ abstract class Model implements Jsonable
 	public function asDecimal($value, $decimals)
 	{
 		return number_format($value, $decimals, '.', '');
+	}
+
+	/**
+	 * Decodes value from json format.
+	 *
+	 * @param string $value
+	 * @param bool $asObject = false
+	 * @return mixed
+	 */
+	public function fromJson($value, $asObject = false)
+	{
+		return json_decode($value, !$asObject);
 	}
 
 	/**
@@ -653,6 +452,17 @@ abstract class Model implements Jsonable
 	}
 
 	/**
+	 * Returns a timestamp value by trying parsing it.
+	 *
+	 * @param mixed $value
+	 * @return int
+	 */
+	public function asTimestamp($value)
+	{
+		return $this->asDateTime($value)->getTimestamp();
+	}
+
+	/**
 	 * Try guessing the date format. Returns null on fail.
 	 *
 	 * @param string $value
@@ -660,8 +470,8 @@ abstract class Model implements Jsonable
 	 */
 	public function guessDateFormat($value)
 	{
-		foreach (static::$dateFormats as $format => $regex) {
-			if (preg_match('/^(\d{4})-(\d{1,2})-(\d{1,2})$/', $value)) {
+		foreach (static::DATE_FORMATS as $format => $regex) {
+			if (preg_match($regex, $value)) {
 				return $format;
 			}
 		}
@@ -685,51 +495,6 @@ abstract class Model implements Jsonable
 	}
 
 	/**
-	 * Returns a timestamp value by trying parsing it.
-	 *
-	 * @param mixed $value
-	 * @return int
-	 */
-	public function asTimestamp($value)
-	{
-		return $this->asDateTime($value)->getTimestamp();
-	}
-
-	/**
-	 *	Sets the value of the specified attribute
-	 *
-	 *	@param	string	$name
-	 *	@param	mixed	$value
-	 *	@return	void
-	 */
-	protected final function setAttribute(string $name, $value)
-	{
-		if ($name == $this->getKey()) {
-			$this->is_new = false;
-		}
-		//
-		if (array_key_exists($name, $this->attributes)) {
-			if ($this->attributes[$name] instanceof \DateTime) {
-				$cal = Date::toDateObject($value);
-				if (!is_null($cal)) {
-					$this->attributes[$name]
-						->setDate($cal->year, $cal->month, $cal->day)
-						->setTime($cal->hour, $cal->minute, $cal->second);
-				}
-			} elseif ($this->attributes[$name] instanceof Date) {
-				$cal = Date::toDateObject($value);
-				if (!is_null($cal)) {
-					$this->attributes[$name] = $cal;
-				}
-			} else {
-				$this->attributes[$name] = $value;
-			}
-		} else {
-			$this->attributes[$name] = $value;
-		}
-	}
-
-	/**
 	 *	Returns if the specified attribute exists
 	 *
 	 *	@param	string	$name
@@ -739,6 +504,38 @@ abstract class Model implements Jsonable
 	{
 		return array_key_exists($name, $this->attributes);
 	}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 	/**
 	 *	Returns if the model was created from zero or not
