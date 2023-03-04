@@ -1,15 +1,16 @@
 <?php
 namespace Asta\Database\Connections;
 
-use PDO;
-use PDOException;
-use PDOStatement;
-use Exception;
-use Closure;
 use Asta\Database\Box\QueryBox;
 use Asta\Database\Query\DatabaseQueryException;
-use Asta\Database\Processors\Processor;
+use Asta\Database\Query\Dialects\SqlServerDialect;
+use Asta\Database\DatabaseException;
 use Asta\Support\Arr;
+use Asta\Support\Parsers\DsnParser;
+use Closure;
+use Exception;
+use RuntimeException;
+use InvalidArgumentException;
 
 /**
  *	Encapsulates the connection features and tasks
@@ -17,34 +18,9 @@ use Asta\Support\Arr;
  *	@author alarido <alarido.su@gmail.com>
  *	@since 2021-07-xx
  */
-class Connection implements ConnectionInterface
+class MsSqlServerConnection extends Connection
 {
-	/**
-	 *	@property	string	$name
-	 *	@property	instanceof \Asta\Database\Processors\Processor $processor
-	 *	@property	string	$dsn
-	 *	@property	string	$database
-	 *	@property	string	$username
-	 *	@property	array	$options
-	 *	@property	$name
-	 */
-	public function __get($name)
-	{
-		if (in_array($name, ['name', 'processor']))
-		{
-			return $this->$name;
-		}
-		if (in_array($name, ['dsn','database','username','options']))
-		{
-			return $this->conn_data[$name];
-		}
-	}
-
-
-	/**
-	 *	@var string $name
-	 */
-	protected $name = null;
+	public const REGEX_PREPARED = '/(.*WHERE.*\?.*|.*VALUES\s*\(.*,?\s*\?.*)/i';
 
 	/**
 	 *	@var \PDOConnection $handle
@@ -52,9 +28,9 @@ class Connection implements ConnectionInterface
 	protected $handle;
 
 	/**
-	 *	@var \Asta\Database\Processors\Processor $processor
+	 *	@var \Asta\Database\Query\Dialects\Dialect $dialect
 	 */
-	protected $processor;
+	protected $dialect;
 
 	/**
 	 *	@var bool $is_open
@@ -74,13 +50,7 @@ class Connection implements ConnectionInterface
 		'database' => '',
 		'username' => '',
 		'password' => '',
-		'options' => [
-			PDO::ATTR_CURSOR => PDO::CURSOR_FWDONLY,
-			PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-			PDO::ATTR_EMULATE_PREPARES => false,
-			PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-			PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES 'UTF8';",
-		]
+		'options' => []
 	];
 
 	/**
@@ -111,9 +81,10 @@ class Connection implements ConnectionInterface
 	 */
 	protected function processError(Exception $ex, string $query, string $whereItOccurred, array $data = null)
 	{
-		$pdo_error = $this->handle->errorInfo();
+		$errors = \sqlsrv_errors(SQLSRV_ERR_ALL);
+		//
 		$info = print_r([
-			'pdo_error' => $pdo_error,
+			'sqlsrv_errors' => $errors,
 			'sql' => $query,
 			'data' => ($data ?? ''),
 			'exception' => get_class($ex),
@@ -121,7 +92,10 @@ class Connection implements ConnectionInterface
 			'message' => $ex->getMessage()
 		], true);
 		//
-		logerror('DBCE: ' . get_class($this), $whereItOccurred . ': ' . $info . ', ' . print_r($info, true));
+		logerror(
+			'DBCE: ' . get_class($this),
+			$whereItOccurred . ': ' . $info . ', ' . print_r($info, true)
+		);
 		//
 		$this->addError(get_class($ex), $ex->getCode(), $ex->getMessage());		
 		$this->addError('PDO', -1, 'ST: ' . print_r($info, true));
@@ -135,17 +109,49 @@ class Connection implements ConnectionInterface
 	 *	@param	string	$pass
 	 *	@param	array	$options
 	 *	@return	void
+	 *	@throws InvalidArgumentException, RuntimeException
 	 */
 	protected function openHandle($dsn, string $user = '', string $pass = '', array $options = [])
 	{
-		try {
-			$this->handle = new PDO($dsn, $user, $pass, $options);
-			if (!is_null($this->handle)) {
-				$this->is_open = true;
+		$values = [];
+		$defaults = [];
+		//
+		if (!empty($user)) {
+			$defaults['user'] = $user;
+		}
+		//
+		if (!empty($pass)) {
+			$defaults['password'] = $pass;
+		}
+		//
+		$defaults['charset'] = $options['charset'] ?? 'UTF-8';
+		//
+		if (DsnParser::parsePdoSqlServer($dsn, $values, $defaults)) {
+			$options = [
+				'UID' => $values['uid'],
+				'PWD' => $values['pwd'],
+				'Database' => $values['database'],
+				'Authentication' => 'SqlPassword',
+				'CharacterSet' => 'UTF-8',
+				'TrustServerCertificate' => 'true',
+			];
+			//
+			//logit(__METHOD__, print_r([$values, $options], true));
+			//
+			$this->handle = \sqlsrv_connect($values['server'], $options);
+			//
+			$errors = \sqlsrv_errors(SQLSRV_ERR_ERRORS);
+			//
+			if (!empty($errors)) {
+				throw new RuntimeException('mysqli connection error: ' . $errors[0]['code'] . ': ' . $errors[0]['message']);
 			}
-		} catch (Exception $ex) {
+			//
+			$this->is_open = true;
+		} else {
 			$this->is_open = false;
-			$this->addError(get_class($ex), $ex->getCode(), $ex->getMessage());
+			$this->addError('malformed DSN', -1, $dsn);
+			//
+			throw new InvalidArgumentException('DSN is invalid or malformed.');	
 		}
 	}
 
@@ -156,8 +162,32 @@ class Connection implements ConnectionInterface
 	 */
 	protected function closeHandle()
 	{
+		$this->handle->close();
 		$this->handle = null;
 		$this->is_open = false;
+	}
+
+	/**
+	 *	Does the binding work
+	 *
+	 *	@param	mixed	$stmt
+	 *	@param	mixed	$data
+	 *	@return	void
+	 */
+	protected function binder($stmt, $data, $callerInfo = null)
+	{
+		if (count($data) > 0) {
+			$types = '';
+			$rowdata = [];
+			//
+			foreach ($data as $n => $v) {
+				$type = (is_double($v) ? 'd' : (is_int($v) ? 'i' : 's'));
+				$types .= $type;
+				$rowdata[] = $v;
+			}
+			//
+			$stmt->bind_param($types, ...$rowdata);
+		}
 	}
 
 	/**
@@ -165,41 +195,36 @@ class Connection implements ConnectionInterface
 	 *
 	 *	@param	string	$sql
 	 *	@return	array
+	 *	@throws \RuntimeException
 	 */
-	protected function selectQuery(string $sql, array $data)
+	protected function selectQuery(string $sql, array $params)
 	{
-		$stmt = null;
 		$result = [];
-
-		try
-		{
-			$stmt = $this->handle->prepare($sql);
+		$rsrc = \sqlsrv_query($this->handle, $sql, $params);
+		$errors = \sqlsrv_errors(SQLSRV_ERR_ERRORS);
+		//
+		//logit(__METHOD__, print_r([ 'sql' => $sql, 'params' => $params, 'handle' => $this->handle, 'rowset.type' => gettype($rsrc), 'conn' => $this->getName(), 'errs' => $errors ], true));
+		//
+		if (!empty($errors)) {
+			$ex = new RuntimeException('sqlsrv select error: ' . $errors[0]['code'] . ': ' . $errors[0]['message']);
+			//
+			$this->processError($ex, $sql, __METHOD__ . ' » sqlsrv_query(): ', $params);
+			throw $ex;
 		}
-		catch (Exception $ex)
-		{
-			$this->processError($ex, $sql, __METHOD__ . ' » PDO::prepare(): ', $row);
-
-			return null;
-		}
-
-		$i = 0;
-		foreach ($data as $n => $v)
-		{
-			$stmt->bindValue(++$i, $v);
-		}
-
-		$stmt->execute();
-		$rowset = $stmt->fetchAll();
-		$stmt->closeCursor();
-
-		if (is_array($rowset) || $rowset instanceof PDOStatement)
-		{
-			foreach ($rowset as $row)
-			{
-				$result[] = $row;
+		//
+		while ($row = \sqlsrv_fetch_array($rsrc, SQLSRV_FETCH_ASSOC)) {
+			/*
+			foreach ($row as $ri => $cell) {
+				if ($cell instanceof \DateTime) {
+					$row[$ri] = $cell->format('Y-m-d H:i:s');
+				}
 			}
+			*/
+			$result[] = $row;
 		}
-
+		//
+		\sqlsrv_free_stmt($rsrc);
+		//
 		return $result;
 	}
 
@@ -210,39 +235,36 @@ class Connection implements ConnectionInterface
 	 *	@param	array	$row
 	 *	@param	bool	$usingNamedParameters
 	 *	@return	int
+	 *	@throws \RuntimeException
 	 */
 	protected function insertQuery(string $sql, array $row, bool $usingNamedParameters = false)
 	{
-		$stmt = null;
-
-		try
-		{
-			$stmt = $this->handle->prepare($sql);
+		$last_id = 0;
+		$rows_affected = 0;
+		//
+		$params = Arr::values($row);
+		$rsrc = \sqlsrv_query($this->handle, $sql, $params);
+		//
+		//logit(__METHOD__, print_r([ 'sql' => $sql, 'params' => $params, 'handle' => $this->handle, 'rowset.type' => gettype($rsrc), 'conn' => $this->getName(), 'errs' => $errors ], true));
+		//
+		if ($rsrc !== false) {
+			//\sqlsrv_next_result($rsrc); 
+			\sqlsrv_fetch($rsrc); 			
+			$last_id = \sqlsrv_get_field($rsrc, 0);
+			$rows_affected = \sqlsrv_rows_affected($rsrc);
 		}
-		catch (Exception $ex)
-		{
-			$this->processError($ex, $sql, __METHOD__ . ' » PDO::prepare(): ', $row);
+		//
+		$errors = \sqlsrv_errors(SQLSRV_ERR_ERRORS);
+		//
+		\sqlsrv_free_stmt($rsrc);
+		//
+		if (!empty($errors)) {
+			$ex = new RuntimeException('mysqli insert_into error: ' . $errors[0]['code'] . ': ' . $errors[0]['message']);
+			//
+			$this->processError($ex, $sql, __METHOD__ . ' » sqlsrv_query(): ', [$row]);
+			throw $ex;
 		}
-
-		if ($usingNamedParameters)
-		{
-			foreach ($row as $n => $v)
-			{
-				$stmt->bindValue($n, $v);
-			}
-		}
-		else
-		{
-			$i = 0;
-			foreach ($row as $n => $v)
-			{
-				$stmt->bindValue(++$i, $v);
-			}
-		}
-
-		$stmt->execute();
-		$last_id = $this->handle->lastInsertId();
-
+		//
 		return $last_id;
 	}
 
@@ -250,41 +272,37 @@ class Connection implements ConnectionInterface
 	 *	Executes update query and returns the number of affected rows (may depends on the underlying db engine)
 	 *
 	 *	@param	string	$sql
-	 *	@param	array	$row
+	 *	@param	array	$data
 	 *	@param	bool	$usingNamedParameters
 	 *	@return	int
+	 *	@throws \RuntimeException
 	 */
 	protected function updateQuery(string $sql, array $data, bool $usingNamedParameters = false)
 	{
-		try
-		{
-			$stmt = $this->handle->prepare($sql);
+		$last_id = 0;
+		$rows_affected = 0;
+		//
+		$params = Arr::values($data);
+		$rsrc = \sqlsrv_query($this->handle, $sql, $params);
+		//
+		if ($rsrc !== false) {
+			$last_id = \sqlsrv_get_field($rsrc, 0);
+			$rows_affected = \sqlsrv_rows_affected($rsrc);
 		}
-		catch (Exception $ex)
-		{
-			$this->processError($ex, $sql, __METHOD__ . ' » PDO::prepare(): ', $row);
-			return 0;
+		//
+		$errors = \sqlsrv_errors(SQLSRV_ERR_ERRORS);
+		//
+		\sqlsrv_free_stmt($rsrc);
+		//
+		if (!empty($errors)) {
+			$ex = new RuntimeException('sqlsrv update error: ' . $errors[0]['code'] . ': ' . $errors[0]['message']);
+			//
+			$this->processError($ex, $sql, __METHOD__ . ' » sqlsrv_query(): ', [$data]);
+			throw $ex;
 		}
-
-		if ($usingNamedParameters)
-		{
-			foreach ($data as $n => $v)
-			{
-				$stmt->bindValue($n, $v);
-			}
-		}
-		else
-		{
-			$i = 0;
-			foreach ($data as $n => $v)
-			{
-				$stmt->bindValue(++$i, $v);
-			}
-		}
-
-		$stmt->execute();
-		$rows_affected = $stmt->rowCount();
-
+		//
+		//logit($callerInfo.' from('.__METHOD__.') ', print_r([ 'stmt' => $stmt, 'data' => $data ], true));		
+		//
 		return $rows_affected;
 	}
 
@@ -294,40 +312,32 @@ class Connection implements ConnectionInterface
 	 *	@param	string	$sql
 	 *	@param	bool	$usingNamedParameters
 	 *	@return	int
+	 *	@throws \RuntimeException
 	 */
 	protected function deleteQuery(string $sql, array $data, bool $usingNamedParameters = false)
 	{
-		$stmt = null;
-
-		try
-		{
-			$stmt = $this->handle->prepare($sql);
+		$last_id = 0;
+		$rows_affected = 0;
+		//
+		$params = Arr::values($data);
+		$rsrc = \sqlsrv_query($this->handle, $sql, $params);
+		//
+		if ($rsrc !== false) {
+			$last_id = \sqlsrv_get_field($rsrc, 0);
+			$rows_affected = \sqlsrv_rows_affected($rsrc);
 		}
-		catch (Exception $ex)
-		{
-			$this->processError($ex, $sql, __METHOD__ . ' » PDO::prepare(): ', $row);
-			return 0;
+		//
+		$errors = \sqlsrv_errors(SQLSRV_ERR_ERRORS);
+		//
+		\sqlsrv_free_stmt($rsrc);
+		//
+		if (!empty($errors)) {
+			$ex = new RuntimeException('sqlsrv delete_from error: ' . $errors[0]['code'] . ': ' . $errors[0]['message']);
+			//
+			$this->processError($ex, $sql, __METHOD__ . ' » sqlsrv_query(): ', [$data]);
+			throw $ex;
 		}
-
-		if ($usingNamedParameters)
-		{
-			foreach ($data as $n => $v)
-			{
-				$stmt->bindValue($n, $v);
-			}
-		}
-		else
-		{
-			$i = 0;
-			foreach ($data as $n => $v)
-			{
-				$stmt->bindValue(++$i, $v);
-			}
-		}
-
-		$stmt->execute();
-		$rows_affected = $stmt->rowCount();
-
+		//
 		return $rows_affected;
 	}
 
@@ -340,20 +350,20 @@ class Connection implements ConnectionInterface
 	protected function transactBunch(Closure $bunch)
 	{
 		$result = 0;
-
-		try
-		{
-			$this->handle->beginTransaction();
+		//
+		try {
+			\sqlsrv_begin_transaction($this->handle);
 			$result = $bunch();
-			$this->handle->commit();			
+			\sqlsrv_commit($this->handle);
+		} catch (Exception $ex) {
+			\sqlsrv_commit($this->handle);
+			//
+			$ex = new DatabaseQueryException('There are errors during transaction inside transact($bunch).');
+			//
+			$this->processError($ex, $sql, __METHOD__ . ' » sqlsrv_query(): ', [$result]);
+			throw $ex;
 		}
-		catch (Exception $ex)
-		{
-			$this->handle->rollback();
-
-			throw new DatabaseQueryException('There are errors during transaction inside transact($bunch).');
-		}
-
+		//
 		return $result;
 	}
 
@@ -365,14 +375,18 @@ class Connection implements ConnectionInterface
 	 *	@param	string	$username
 	 *	@param	string	$password
 	 */
-	public function __construct($dsn = '', string $database = '', string $username = '', string $password = '')
+	public function __construct($dsn, string $database = '', string $username = '', string $password = '')
 	{
+		if (!function_exists('sqlsrv_connect')) {
+			throw new DatabaseException('PHP extension not installed or not configured properly: sqlsvr.');
+		}
+		//
 		$this->conn_data['dsn'] = $dsn;
 		$this->conn_data['database'] = $database;
 		$this->conn_data['username'] = $username;
 		$this->conn_data['password'] = $password;
-
-		$this->processor = new Processor();
+		//
+		$this->dialect = new SqlServerDialect();
 	}
 
 	/**
@@ -382,51 +396,16 @@ class Connection implements ConnectionInterface
 	 */
 	public function __destruct()
 	{
-		if (is_array($this->errors))
-		{
-			foreach ($this->errors as $error)
-			{
+		if (is_array($this->errors)) {
+			foreach ($this->errors as $error) {
 				logerror('DBCE: ' . get_class($this), print_r($error, true));
 			}
 		}
-
+		//
 		$this->is_open = false;
 		$this->conn_data = null;
 		$this->handle = null;
 		$this->errors = null;
-	}
-
-	/**
-	 *	Sets the name of the connection (if it is currently unnamed)
-	 *
-	 *	@param	string	$name
-	 *	@return	bool
-	 */
-	public final function setName(string $name = null)
-	{
-		if (is_null($this->name))
-		{
-			if (empty($name))
-			{
-				$name = 'cdbc:' . Str::random(27);
-			}
-
-			$this->name = $name;
-
-			return true;
-		}
-		//
-		return false;
-	}
-
-	/**
-	 *	Retrieves the name of the connection
-	 *
-	 *	@return	string
-	 */
-	public final function getName()
-	{
-		return $this->name ?? '';
 	}
 
 	/**
@@ -436,14 +415,11 @@ class Connection implements ConnectionInterface
 	 */
 	public function changeDatabase(string $database)
 	{
-		if ($database != $this->conn_data['database'])
-		{
-			$this->conn_data['database'] = $database;
-
-			return true;
-		}
+		parent::changeDatabase($database);
 		//
-		return false;
+		if ($this->is_open) {
+			\sqlsrv_query($this->handle, "USE $database;");
+		}
 	}
 
 	/**
@@ -453,12 +429,19 @@ class Connection implements ConnectionInterface
 	 */
 	public function open()
 	{
-		$this->openHandle(
-			$this->conn_data['dsn'],
-			$this->conn_data['username'],
-			$this->conn_data['password'],
-			$this->conn_data['options']
-		);
+		try {
+			$this->openHandle(
+				$this->conn_data['dsn'],
+				$this->conn_data['username'],
+				$this->conn_data['password'],
+				$this->conn_data['options']
+			);
+			//
+			$this->changeDatabase($this->conn_data['database']);
+		} catch (Exception $ex) {
+			$str = print_r($this->conn_data, true);
+			$this->processError($ex, $ex->getMessage(), __METHOD__ . ' » mysqli::connect(): ', [$this->conn_data, $str]);
+		}
 	}
 
 	/**
@@ -480,17 +463,14 @@ class Connection implements ConnectionInterface
 	public function select(string $query, array $data = [])
 	{
 		$results = 0;
-
-		try
-		{
+		//
+		try {
 			$results = $this->selectQuery($query, $data);
-		}
-		catch (Exception $ex)
-		{
+		} catch (Exception $ex) {
 			$this->processError($ex, $query, __METHOD__);
 			return null;
 		}
-
+		//
 		return $results;
 	}
 
@@ -505,17 +485,14 @@ class Connection implements ConnectionInterface
 	public function insertOne(string $query, array $row, bool $useNamedParams = false)
 	{
 		$results = 0;
-
-		try
-		{
+		//
+		try {
 			$results = $this->insertQuery($query, $row, $useNamedParams);
-		}
-		catch (Exception $ex)
-		{
+		} catch (Exception $ex) {
 			$this->processError($ex, $query, __METHOD__);
 			return null;
 		}
-
+		//
 		return $results;
 	}
 
@@ -530,24 +507,20 @@ class Connection implements ConnectionInterface
 	public function insertMany(string $query, array $rows, bool $useNamedParams = false)
 	{
 		$results = 0;
-
-		try
-		{
+		//
+		try {
 			$results = $this->transactBunch(function() use ($query, $rows, $useNamedParams){
 				$list_ids = [];
-				foreach ($rows as $row)
-				{
+				foreach ($rows as $row) {
 					$list_ids[] = $this->insertQuery($query, $row, $useNamedParams);
 				}
 				return $list_ids;
 			});
-		}
-		catch (Exception $ex)
-		{
+		} catch (Exception $ex) {
 			$this->processError($ex, $query, __METHOD__);
 			return null;
 		}
-
+		//
 		return $results;
 	}
 
@@ -562,17 +535,14 @@ class Connection implements ConnectionInterface
 	public function update(string $query, array $data, bool $useNamedParams = false)
 	{
 		$results = 0;
-
-		try
-		{
+		//
+		try {
 			$results = $this->updateQuery($query, $data, $useNamedParams);
-		}
-		catch (Exception $ex)
-		{
+		} catch (Exception $ex) {
 			$this->processError($ex, $query, __METHOD__ . ' PDO::prepare() ');
 			return null;
 		}
-
+		//
 		return $results;
 	}
 
@@ -580,23 +550,21 @@ class Connection implements ConnectionInterface
 	 *	Performs deletion
 	 *
 	 *	@param	string	$query
+	 *	@param	array	$data
 	 *	@param	bool	$useNamedParams
 	 *	@return	mixed
 	 */
 	public function delete(string $query, array $data, bool $useNamedParams = false)
 	{
 		$results = 0;
-
-		try
-		{
+		//
+		try {
 			$results = $this->deleteQuery($query, $data, $useNamedParams);
-		}
-		catch (Exception $ex)
-		{
+		} catch (Exception $ex) {
 			$this->processError($ex, $query, __METHOD__ . ' PDO::prepare() ');
 			return null;
 		}
-
+		//
 		return $results;
 	}
 
@@ -628,10 +596,10 @@ class Connection implements ConnectionInterface
 	 */
 	public function lastError()
 	{
-		if ($this->hasErrors())
-		{
+		if ($this->hasErrors()) {
 			return $this->errors[count($this->errors) - 1];
 		}
+		//
 		return null;
 	}
 
@@ -642,10 +610,10 @@ class Connection implements ConnectionInterface
 	 */
 	public function lastErrorIndex()
 	{
-		if ($this->hasErrors())
-		{
+		if ($this->hasErrors()) {
 			return count($this->errors) - 1;
 		}
+		//
 		return 0;
 	}
 
@@ -658,23 +626,19 @@ class Connection implements ConnectionInterface
 	public function transact(Closure $bunch)
 	{
 		$result = 0;
-
-		try
-		{
+		//
+		try {
 			$this->handle->beginTransaction();
 			$lei_before = $this->lastErrorIndex();
 			$result = $bunch();
 			$lei_after = $this->lastErrorIndex();
-
-			if ($lei_after > $lei_before)
-			{
+			//
+			if ($lei_after > $lei_before) {
 				throw new DatabaseQueryException('There are errors during transaction inside transact($bunch).');
 			}
-
+			//
 			$this->handle->commit();			
-		}
-		catch (Exception $ex)
-		{
+		} catch (Exception $ex) {
 			$this->errors[] = [
 				'type' => get_class($ex),
 				'code' => '' . $ex->getCode() . '',
@@ -683,7 +647,7 @@ class Connection implements ConnectionInterface
 			$this->handle->rollback();
 			return false;
 		}
-
+		//
 		return $result;
 	}
 

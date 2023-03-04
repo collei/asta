@@ -1,15 +1,14 @@
 <?php
 namespace Asta\Database\Connections;
 
-use PDO;
-use PDOException;
-use PDOStatement;
+use mysqli;
 use Exception;
 use Closure;
 use Asta\Database\Box\QueryBox;
 use Asta\Database\Query\DatabaseQueryException;
-use Asta\Database\Processors\Processor;
+use Asta\Database\Query\Dialects\MySqlDialect;
 use Asta\Support\Arr;
+use Asta\Support\Parsers\DsnParser;
 
 /**
  *	Encapsulates the connection features and tasks
@@ -17,34 +16,9 @@ use Asta\Support\Arr;
  *	@author alarido <alarido.su@gmail.com>
  *	@since 2021-07-xx
  */
-class Connection implements ConnectionInterface
+class MySqliConnection extends Connection
 {
-	/**
-	 *	@property	string	$name
-	 *	@property	instanceof \Asta\Database\Processors\Processor $processor
-	 *	@property	string	$dsn
-	 *	@property	string	$database
-	 *	@property	string	$username
-	 *	@property	array	$options
-	 *	@property	$name
-	 */
-	public function __get($name)
-	{
-		if (in_array($name, ['name', 'processor']))
-		{
-			return $this->$name;
-		}
-		if (in_array($name, ['dsn','database','username','options']))
-		{
-			return $this->conn_data[$name];
-		}
-	}
-
-
-	/**
-	 *	@var string $name
-	 */
-	protected $name = null;
+	public const REGEX_PREPARED = '/(.*WHERE.*\?.*|.*VALUES\s*\(.*,?\s*\?.*)/i';
 
 	/**
 	 *	@var \PDOConnection $handle
@@ -52,9 +26,9 @@ class Connection implements ConnectionInterface
 	protected $handle;
 
 	/**
-	 *	@var \Asta\Database\Processors\Processor $processor
+	 *	@var \Asta\Database\Query\Dialects\Dialect $dialect
 	 */
-	protected $processor;
+	protected $dialect;
 
 	/**
 	 *	@var bool $is_open
@@ -74,13 +48,7 @@ class Connection implements ConnectionInterface
 		'database' => '',
 		'username' => '',
 		'password' => '',
-		'options' => [
-			PDO::ATTR_CURSOR => PDO::CURSOR_FWDONLY,
-			PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-			PDO::ATTR_EMULATE_PREPARES => false,
-			PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-			PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES 'UTF8';",
-		]
+		'options' => []
 	];
 
 	/**
@@ -120,9 +88,9 @@ class Connection implements ConnectionInterface
 			'code' => $ex->getCode(),
 			'message' => $ex->getMessage()
 		], true);
-		//
+
 		logerror('DBCE: ' . get_class($this), $whereItOccurred . ': ' . $info . ', ' . print_r($info, true));
-		//
+
 		$this->addError(get_class($ex), $ex->getCode(), $ex->getMessage());		
 		$this->addError('PDO', -1, 'ST: ' . print_r($info, true));
 	}
@@ -135,17 +103,50 @@ class Connection implements ConnectionInterface
 	 *	@param	string	$pass
 	 *	@param	array	$options
 	 *	@return	void
+	 *	@throws InvalidArgumentException, RuntimeException
 	 */
 	protected function openHandle($dsn, string $user = '', string $pass = '', array $options = [])
 	{
-		try {
-			$this->handle = new PDO($dsn, $user, $pass, $options);
-			if (!is_null($this->handle)) {
-				$this->is_open = true;
+		$values = [];
+		$defaults = [];
+
+		if (!empty($user))
+		{
+			$defaults['user'] = $user;
+		}
+
+		if (!empty($pass))
+		{
+			$defaults['password'] = $pass;
+		}
+
+		$defaults['charset'] = $options['charset'] ?? 'utf8mb4';
+
+		if (DsnParser::parsePdoMysql($dsn, $values, $defaults))
+		{
+			$this->handle = new mysqli($values['host'], $values['user'], $values['password'], $values['dbname']);
+
+			if ($this->handle->connect_errno)
+			{
+				throw new RuntimeException('mysqli connection error: ' . $this->handle->connect_error);
 			}
-		} catch (Exception $ex) {
+
+			/* Set the desired charset after establishing a connection */
+			$this->handle->set_charset($values['charset']);
+
+			if ($this->handle->errno)
+			{
+				throw new RuntimeException('mysqli error: ' . $this->handle->error);
+			}
+
+			$this->is_open = true;
+		}
+		else
+		{
 			$this->is_open = false;
-			$this->addError(get_class($ex), $ex->getCode(), $ex->getMessage());
+			$this->addError('malformed DSN', -1, $dsn);
+
+			throw new InvalidArgumentException('DSN value is invalid or malformed.');	
 		}
 	}
 
@@ -156,8 +157,35 @@ class Connection implements ConnectionInterface
 	 */
 	protected function closeHandle()
 	{
+		$this->handle->close()
+		;
 		$this->handle = null;
 		$this->is_open = false;
+	}
+
+	/**
+	 *	Does the binding work
+	 *
+	 *	@param	mixed	$stmt
+	 *	@param	mixed	$data
+	 *	@return	void
+	 */
+	protected function binder($stmt, $data, $callerInfo = null)
+	{
+		if (count($data) > 0)
+		{
+			$types = '';
+			$rowdata = [];
+
+			foreach ($data as $n => $v)
+			{
+				$type = (is_double($v) ? 'd' : (is_int($v) ? 'i' : 's'));
+				$types .= $type;
+				$rowdata[] = $v;
+			}
+
+			$stmt->bind_param($types, ...$rowdata);
+		}
 	}
 
 	/**
@@ -166,10 +194,10 @@ class Connection implements ConnectionInterface
 	 *	@param	string	$sql
 	 *	@return	array
 	 */
-	protected function selectQuery(string $sql, array $data)
+	protected function selectQuery(string $sql, array $params)
 	{
-		$stmt = null;
 		$result = [];
+		$stmt = null;
 
 		try
 		{
@@ -177,27 +205,20 @@ class Connection implements ConnectionInterface
 		}
 		catch (Exception $ex)
 		{
-			$this->processError($ex, $sql, __METHOD__ . ' » PDO::prepare(): ', $row);
-
-			return null;
+			$this->processError($ex, $sql, __METHOD__ . ' » mysqli::prepare(): ', $row);
 		}
 
-		$i = 0;
-		foreach ($data as $n => $v)
-		{
-			$stmt->bindValue(++$i, $v);
-		}
+		//logit(__METHOD__, print_r([ 'sql' => $sql, 'conn' => $this->getName() ], true));
 
+		$this->binder($stmt, $params, __METHOD__);
 		$stmt->execute();
-		$rowset = $stmt->fetchAll();
-		$stmt->closeCursor();
+		$rowset = $stmt->get_result();
 
-		if (is_array($rowset) || $rowset instanceof PDOStatement)
+		//logit(__METHOD__, print_r([ 'sql' => $sql, 'rowset.type' => gettype($rowset), 'conn' => $this->getName() ], true));
+
+		while ($row = $rowset->fetch_assoc())
 		{
-			foreach ($rowset as $row)
-			{
-				$result[] = $row;
-			}
+			$result[] = $row;
 		}
 
 		return $result;
@@ -221,27 +242,17 @@ class Connection implements ConnectionInterface
 		}
 		catch (Exception $ex)
 		{
-			$this->processError($ex, $sql, __METHOD__ . ' » PDO::prepare(): ', $row);
+			$this->processError($ex, $sql, __METHOD__ . ' » mysqli::prepare(): ', $row);
 		}
 
-		if ($usingNamedParameters)
-		{
-			foreach ($row as $n => $v)
-			{
-				$stmt->bindValue($n, $v);
-			}
-		}
-		else
-		{
-			$i = 0;
-			foreach ($row as $n => $v)
-			{
-				$stmt->bindValue(++$i, $v);
-			}
-		}
+		//logit(__METHOD__, print_r([ 'sql' => $sql, 'row' => $row, 'conn' => $this->getName() ], true));
 
+		unset($data['created_at']);
+		unset($data['updated_at']);
+
+		$this->binder($stmt, $row, __METHOD__);
 		$stmt->execute();
-		$last_id = $this->handle->lastInsertId();
+		$last_id = $stmt->insert_id;
 
 		return $last_id;
 	}
@@ -250,40 +261,38 @@ class Connection implements ConnectionInterface
 	 *	Executes update query and returns the number of affected rows (may depends on the underlying db engine)
 	 *
 	 *	@param	string	$sql
-	 *	@param	array	$row
+	 *	@param	array	$data
 	 *	@param	bool	$usingNamedParameters
 	 *	@return	int
 	 */
 	protected function updateQuery(string $sql, array $data, bool $usingNamedParameters = false)
 	{
+		$stmt = null;
+
 		try
 		{
 			$stmt = $this->handle->prepare($sql);
 		}
 		catch (Exception $ex)
 		{
-			$this->processError($ex, $sql, __METHOD__ . ' » PDO::prepare(): ', $row);
+			$this->processError($ex, $sql, __METHOD__ . ' » mysqli::prepare(): ', $data);
 			return 0;
 		}
 
-		if ($usingNamedParameters)
+		foreach ($data as $n => $v)
 		{
-			foreach ($data as $n => $v)
+			if ($v == ':updated_at')
 			{
-				$stmt->bindValue($n, $v);
-			}
-		}
-		else
-		{
-			$i = 0;
-			foreach ($data as $n => $v)
-			{
-				$stmt->bindValue(++$i, $v);
+				//$data[$n] = $this->dialect->functions('current_timestamp');
+				break;
 			}
 		}
 
+		//logit($callerInfo.' from('.__METHOD__.') ', print_r([ 'stmt' => $stmt, 'data' => $data ], true));		
+
+		$this->binder($stmt, $data, __METHOD__);
 		$stmt->execute();
-		$rows_affected = $stmt->rowCount();
+		$rows_affected = $stmt->affected_rows;
 
 		return $rows_affected;
 	}
@@ -299,34 +308,21 @@ class Connection implements ConnectionInterface
 	{
 		$stmt = null;
 
+		//logit(__METHOD__, print_r([ 'sql' => $sql, 'row' => $data, 'conn' => $this->getName() ], true));
+
 		try
 		{
 			$stmt = $this->handle->prepare($sql);
 		}
 		catch (Exception $ex)
 		{
-			$this->processError($ex, $sql, __METHOD__ . ' » PDO::prepare(): ', $row);
+			$this->processError($ex, $sql, __METHOD__ . ' » mysqli::prepare(): ', $data);
 			return 0;
 		}
 
-		if ($usingNamedParameters)
-		{
-			foreach ($data as $n => $v)
-			{
-				$stmt->bindValue($n, $v);
-			}
-		}
-		else
-		{
-			$i = 0;
-			foreach ($data as $n => $v)
-			{
-				$stmt->bindValue(++$i, $v);
-			}
-		}
-
+		$this->binder($stmt, $data, __METHOD__);
 		$stmt->execute();
-		$rows_affected = $stmt->rowCount();
+		$rows_affected = $stmt->affected_rows;
 
 		return $rows_affected;
 	}
@@ -343,7 +339,7 @@ class Connection implements ConnectionInterface
 
 		try
 		{
-			$this->handle->beginTransaction();
+			$this->handle->begin_transaction();
 			$result = $bunch();
 			$this->handle->commit();			
 		}
@@ -365,14 +361,14 @@ class Connection implements ConnectionInterface
 	 *	@param	string	$username
 	 *	@param	string	$password
 	 */
-	public function __construct($dsn = '', string $database = '', string $username = '', string $password = '')
+	public function __construct($dsn, string $database = '', string $username = '', string $password = '')
 	{
 		$this->conn_data['dsn'] = $dsn;
 		$this->conn_data['database'] = $database;
 		$this->conn_data['username'] = $username;
 		$this->conn_data['password'] = $password;
 
-		$this->processor = new Processor();
+		$this->dialect = new MySqlDialect();
 	}
 
 	/**
@@ -397,53 +393,19 @@ class Connection implements ConnectionInterface
 	}
 
 	/**
-	 *	Sets the name of the connection (if it is currently unnamed)
-	 *
-	 *	@param	string	$name
-	 *	@return	bool
-	 */
-	public final function setName(string $name = null)
-	{
-		if (is_null($this->name))
-		{
-			if (empty($name))
-			{
-				$name = 'cdbc:' . Str::random(27);
-			}
-
-			$this->name = $name;
-
-			return true;
-		}
-		//
-		return false;
-	}
-
-	/**
-	 *	Retrieves the name of the connection
-	 *
-	 *	@return	string
-	 */
-	public final function getName()
-	{
-		return $this->name ?? '';
-	}
-
-	/**
 	 *	Change the active database for the connection
 	 *
 	 *	@return	bool
 	 */
 	public function changeDatabase(string $database)
 	{
-		if ($database != $this->conn_data['database'])
+		if (parent::changeDatabase($database))
 		{
-			$this->conn_data['database'] = $database;
-
-			return true;
+			if ($this->is_open)
+			{
+				$this->handle->select_db($database);
+			}
 		}
-		//
-		return false;
 	}
 
 	/**
@@ -453,12 +415,22 @@ class Connection implements ConnectionInterface
 	 */
 	public function open()
 	{
-		$this->openHandle(
-			$this->conn_data['dsn'],
-			$this->conn_data['username'],
-			$this->conn_data['password'],
-			$this->conn_data['options']
-		);
+		try
+		{
+			$this->openHandle(
+				$this->conn_data['dsn'],
+				$this->conn_data['username'],
+				$this->conn_data['password'],
+				$this->conn_data['options']
+			);
+
+			$this->handle->select_db($this->conn_data['database']);
+		}
+		catch (Exception $ex)
+		{
+			$str = print_r($this->conn_data, true);
+			$this->processError($ex, $ex->getMessage(), __METHOD__ . ' » mysqli::connect(): ', $str);
+		}
 	}
 
 	/**
@@ -580,6 +552,7 @@ class Connection implements ConnectionInterface
 	 *	Performs deletion
 	 *
 	 *	@param	string	$query
+	 *	@param	array	$data
 	 *	@param	bool	$useNamedParams
 	 *	@return	mixed
 	 */

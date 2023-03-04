@@ -2,6 +2,13 @@
 require __DIR__ . '/vendor/autoload.php';
 
 use Asta\Database\Query\Builder;
+use Asta\Database\Repository\Model;
+
+class Produto extends Model
+{
+	//
+}
+
 
 
 function prettyPrintNestedParenthesis($text, bool $return = false)
@@ -41,6 +48,8 @@ function prettyPrintNestedParenthesis($text, bool $return = false)
 
 $client_supplied_flithy_data = "d' or 1=1 or ''='"; //%d\'--\r\n select * from usuarios ";
 
+$produtos = Produto::all();
+
 $subquery = Builder::new()->from('attendants', 'a')
 	->join('homes','homes.city','city')
 	->select('name','age','city')
@@ -72,7 +81,7 @@ $querist = Builder::new()->from('clients', 'c')
 
 $sql = $querist->toSql();
 
-$builders = compact('subquery','subwhere','querist');
+$builders = compact('produtos','subquery','subwhere','querist');
 
 ?>
 <html>
