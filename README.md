@@ -3,7 +3,7 @@ Simple database query builder tool for any project, designed to not depend on ex
 This also aims to be integrated into the Collei Framework as its database access solution.
 
 ### Why Asta?
-Asta is named after that Honkai Star Rail game character.
+![Asta from Honkai StarRail](https://upload-os-bbs.hoyolab.com/upload/2022/08/04/ea327694e09002a4e57264b74d52df6c_1672898980336111948.png?x-oss-process=image/resize,s_720/quality,q_80/auto-orient,0/interlace,1/format,png "Asta from StarRail")
 
 ## Adding it to your project
 ```
@@ -18,9 +18,9 @@ Currently under developement.
 
 ### Under Developement
 * Query Builder
+* Model Mapping Feature
 
 ### For the Long Run
-* Model Mapper
 * Result Paginator
 * Support for MySQL/MariaDB, SQL Server and PostgreSQL
 
