@@ -2,6 +2,7 @@
 namespace Asta\Database\Repository;
 
 use InvalidArgumentException;
+use LogicException;
 
 use Asta\Database\Interfaces\Repository\CasterProperties;
 
@@ -27,14 +28,49 @@ use Jeht\Support\Calendar\Date;
 abstract class Model implements Jsonable
 {
 	/**
-	 *	@var \Asta\Database\Connections\ConnectionInterface $connection
+	 *	@var \Asta\Database\Connections\ConnectionInterface
 	 */
 	private $connection = null;
 
 	/**
-	 *	@var \Asta\Database\Query\Builder $builder
+	 *	@var \Asta\Database\Query\Builder
 	 */
 	private $builder = null;
+
+	/**
+	 *	@var string
+	 */
+	protected $table;
+
+	/**
+	 *	@var string
+	 */
+	protected $privateKey;
+
+	/**
+	 *	@var string
+	 */
+	protected $keyType;
+
+	/**
+	 *	@var bool
+	 */
+	protected $incrementing;
+
+	/**
+	 *	@var bool
+	 */
+	protected $timestamps;
+
+	/**
+	 *	@var bool
+	 */
+	protected $wasRecentlyCreated;
+
+	/**
+	 *	@var array $attributes
+	 */
+	protected $attributes = [];
 
 	/**
 	 *	@var array $attributes
@@ -47,9 +83,16 @@ abstract class Model implements Jsonable
 	protected $original = [];
 
 	/**
-	 *	@var array $fillable
+	 *	@var array
 	 */
 	protected $fillable = [];
+
+	/**
+	 *	@var array
+	 */
+	protected $readonly = [
+		'id'
+	];
 
 	/**
 	 *	@var array
@@ -125,6 +168,16 @@ abstract class Model implements Jsonable
 	];
 
 	/**
+	 *	@var @static string
+	 */
+	protected const CREATED_AT = 'created_at';
+
+	/**
+	 *	@var @static string
+	 */
+	protected const UPDATED_AT = 'updated_at';
+
+	/**
 	 *	Builds and instantiates a Model
 	 *
 	 *	@param	array	$attributes = []
@@ -136,8 +189,150 @@ abstract class Model implements Jsonable
 	}
 
 	/**
+	 * Get the table associated with the model.
+	 *
+	 * @return string
+	 */
+	public function getTable()
+	{
+		return $this->table ?? self::catterTableName();
+	}
+
+	/**
+	 * Get the table associated with the model.
+	 *
+	 * @param string $table
+	 * @return $this
+	 */
+	public function setTable(string $table)
+	{
+		if (! empty($table)) {
+			$this->table = $table;
+		}
+		//
+		return $this;
+	}
+
+	/**
+	 * Get the name of the primary key.
+	 *
+	 * @return string
+	 */
+	public function getKey()
+	{
+		return $this->primaryKey ?? 'id';
+	}
+
+	/**
+	 * Define the primary key field name.
+	 *
+	 * @param string $key
+	 * @return $this
+	 */
+	public function setKey(string $key)
+	{
+		if (! empty($key)) {
+			$this->primaryKey = $key;
+		}
+		//
+		return $this;
+	}
+
+	/**
+	 * Get the name of the created_at.
+	 *
+	 * @return string
+	 */
+	public function getCreatedAt()
+	{
+		return self::CREATED_AT;
+	}
+
+	/**
+	 * Get the name of the updated_at.
+	 *
+	 * @return string
+	 */
+	public function getUpdatedAt()
+	{
+		return self::UPDATED_AT;
+	}
+
+	/**
+	 * Get the type of the primary key.
+	 *
+	 * @return string
+	 */
+	public function getKeyType()
+	{
+		return $this->keyType ?? 'int';
+	}
+
+	/**
+	 * Define the primary key field name.
+	 *
+	 * @param string $type
+	 * @return $this
+	 */
+	public function setKey(string $type)
+	{
+		if (! empty($type)) {
+			$this->keyType = $type;
+		}
+		//
+		return $this;
+	}
+
+	/**
+	 * Tells if primary key is incrementing.
+	 *
+	 * @return bool
+	 */
+	public function isIncrementing()
+	{
+		return $this->incrementing;
+	}
+
+	/**
+	 * Define the primary key field name.
+	 *
+	 * @param bool $incrementing = true
+	 * @return $this
+	 */
+	public function setIncrementing(bool $incrementing = true)
+	{
+		$this->incrementing = $incrementing;
+		//
+		return $this;
+	}
+
+	/**
+	 * Tells if the table has timestamp fields.
+	 *
+	 * @return bool
+	 */
+	public function hasTimestamps()
+	{
+		return $this->timestamps;
+	}
+
+	/**
+	 * Define if timestamps should be enabled or not.
+	 *
+	 * @param bool $timestamps = true
+	 * @return $this
+	 */
+	public function setTimestamps(bool $timestamps = true)
+	{
+		$this->timestamps = $timestamps;
+		//
+		return $this;
+	}
+
+	/**
 	 * Catter the table name from the class name.
 	 *
+	 * @static
 	 * @return string
 	 */
 	protected static function catterTableName()
@@ -505,77 +700,41 @@ abstract class Model implements Jsonable
 		return array_key_exists($name, $this->attributes);
 	}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 	/**
-	 *	Returns if the model was created from zero or not
+	 *	Retrieves attributes by name.
 	 *
-	 *	@return	bool
-	 */
-	protected final function isNew()
-	{
-		return $this->is_new;
-	}
-
-	/**
-	 *	Returns values by calling no-argument methods as attributes
-	 *	and also retrieves attributes.
+	 *	@param	string	$name
+	 *	@return	mixed
 	 */
 	public function __get($name)
 	{
-		if (method_exists($this, $name)) {
-			if (!isset($this->cache[$name])) {
-				$this->cache[$name] = $this->$name();
-			}
-			//
-			return $this->cache[$name];
-		}
-		//
 		return $this->getAttribute($name);
 	}
 
 	/**
-	 *	Sets attributes when they exist
+	 *	Sets attributes by name if they are writable.
+	 *
+	 *	@param	string	$name
+	 *	@param	mixed	$value
+	 *	@return	$this
+	 *	@throws	\LogicException	if the attribute is defined as readonly
 	 */
 	public function __set($name, $value)
 	{
-		if ($name != $this->getKey()) {
-			$this->setAttribute($name, $value);
+		if ($name == $this->getKey() || in_array($name, $this->readonly)) {
+			throw new LogicException("The field [$name] is readonly!");
 		}
+		//
+		$this->setAttribute($name, $value);
+		//
+		return $this;
 	}
 
 	/**
 	 *	Asks whether an attribute exists (used by isset() function)
+	 *
+	 *	@param	string	$name
+	 *	@return	bool
 	 */
 	public function __isset(string $name)
 	{
@@ -589,19 +748,14 @@ abstract class Model implements Jsonable
 	public function __debugInfo()
 	{
 		$result = [];
+		//
 		$id_name = $this->getKey();
 		//
 		if (!array_key_exists($id_name, $this->attributes)) {
 			$result[$id_name] = null;
 		}
 		//
-		foreach ($this->attributes as $n => $v) {
-			$result[$n] = $v;
-		}
-		//
-		foreach ($this->cache as $n => $v) {
-			$result['cached:' . $n] = $v;
-		}
+		$result = array_merge($result, $this->attributes);
 		//
 		return $result;
 	}
@@ -613,7 +767,7 @@ abstract class Model implements Jsonable
 	 */
 	public function save()
 	{
-		return Model::insertOrUpdate($this);
+		Model::performSave($this);
 	}
 
 	/**
@@ -621,26 +775,84 @@ abstract class Model implements Jsonable
 	 *
 	 *	@return	mixed
 	 */
-	public function remove()
+	public function delete()
 	{
-		return Model::delete($this);
+		Model::performDelete($this);
 	}
 
-	/**
-	 *	A convenient mode for using with Model::from([field => 'value']) queries
-	 *	that may return either Model or ModelResult instances.
-	 *
-	 *	e.g.: get the first person of list
-	 *
-	 *	$workers = Employee::from(['city' => 'New York']);
-	 *	$first = $workers->firstResult();
-	 *
-	 *	@return	instanceof Model
-	 */
-	public function firstResult()
-	{
-		return $this;
-	}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 	/**
 	 *	Performs database insertion or update
@@ -648,7 +860,7 @@ abstract class Model implements Jsonable
 	 *	@param	\Asta\Database\Yanfei\Model	$model
 	 *	@return	mixed
 	 */
-	protected static function insertOrUpdate(Model $model)
+	protected static function performSave(Model $model)
 	{
 		$table = $model->getTable();
 		$key = $model->getKey();
@@ -688,13 +900,13 @@ abstract class Model implements Jsonable
 	 *	@param	\Asta\Database\Yanfei\Model	$model
 	 *	@return	mixed
 	 */
-	protected static function delete(Model $model)
+	protected static function performDelete(Model $model)
 	{
 		$table = $model->getTable();
 		$key = $model->getKey();
 		//
 		if (!$model->isNew() && $model->hasAttribute($key)) {
-			$eraser = DB::delete($table);
+			$eraser = DB::performDelete($table);
 			return $eraser->where()
 				->is($key, $model->$key)
 				->execute();
@@ -1127,205 +1339,7 @@ abstract class Model implements Jsonable
 		return $this->relationCache['belongs_to_many'][$relatedModelClass];
 	}
 
-	/**
-	 *	Fills all the attributes.
-	 *
-	 *	@param	array	$attributes = []
-	 *	@return	void
-	 */
-	protected function fill(array $attributes)
-	{
-		$totallyGuarded = $this->totallyGuarded();
 
-		foreach ($this->fillableFromArray($attributes) as $key => $value) {
-			$key = $this->removeTableFromKey($key);
-
-			// The developers may choose to place some attributes in the "fillable" array
-			// which means only those attributes may be set through mass assignment to
-			// the model, and all others will just get ignored for security reasons.
-			if ($this->isFillable($key)) {
-				$this->setAttribute($key, $value);
-			} elseif ($totallyGuarded) {
-				throw new MassAssignmentException(sprintf(
-					'Add [%s] to fillable property to allow mass assignment on [%s].',
-					$key, get_class($this)
-				));
-			}
-		}
-
-		return $this;
-	}
-
-	/**
-	 * Determine if the given key is guarded.
-	 *
-	 * @param  string  $key
-	 * @return bool
-	 */
-	public function isGuarded($key)
-	{
-		if (empty($this->getGuarded())) {
-			return false;
-		}
-
-		return $this->getGuarded() == ['*'] ||
-			   ! empty(preg_grep('/^'.preg_quote($key).'$/i', $this->getGuarded())) ||
-			   ! $this->isGuardableColumn($key);
-	}
-
-	/**
-	 * Determine if the given column is a valid, guardable column.
-	 *
-	 * @param  string  $key
-	 * @return bool
-	 */
-	protected function isGuardableColumn($key)
-	{
-		if (! isset(static::$guardableColumns[get_class($this)])) {
-			static::$guardableColumns[get_class($this)] = $this->getConnection()
-						->getSchemaBuilder()
-						->getColumnListing($this->getTable());
-		}
-
-		return in_array($key, static::$guardableColumns[get_class($this)]);
-	}
-
-	/**
-	 * Determine if the model is totally guarded.
-	 *
-	 * @return bool
-	 */
-	public function totallyGuarded()
-	{
-		return count($this->getFillable()) === 0 && $this->getGuarded() == ['*'];
-	}
-
-	/**
-	 * Get the fillable attributes from a given array.
-	 *
-	 * @param array $attributes
-	 * @return array
-	 */
-	protected function fillableFromArray(array $attributes)
-	{
-		$fillables = $this->getFillable();
-		//
-		if (count($fillables) > 0 && ! static::$unguarded) {
-			return array_intersect_key($attributes, array_flip($fillables));
-		}
-		//
-		return $attributes;
-	}
-
-	/**
-	 * Get the fillable attributes for the model.
-	 *
-	 * @return array
-	 */
-	public function getFillable()
-	{
-		return $this->fillable;
-	}
-
-	/**
-	 * Set the fillable attributes for the model.
-	 *
-	 * @param array $fillable
-	 * @return $this
-	 */
-	public function fillable(array $fillable)
-	{
-		$this->fillable = $fillable;
-		//
-		return $this;
-	}
-
-	/**
-	 * Get the guarded attributes for the model.
-	 *
-	 * @return array
-	 */
-	public function getGuarded()
-	{
-		return $this->guarded;
-	}
-
-
-
-
-
-
-
-
-
-
-
-	/**
-	 *	Syncs attribute values.
-	 *
-	 *	@return	$this
-	 */
-	protected function syncOriginal()
-	{
-		$this->original = array_merge($this->original, $this->attributes);
-		//
-		return $this;
-	}
-
-	/**
-	 *	Retrieves the entity (and related ones) as JSON string
-	 *
-	 *	@param	string	...$except	fields and relations to exclude from result
-	 *	@return	string
-	 */
-	public function asJson(string ...$except)
-	{
-		$fields = [];
-		//
-		foreach ($this->attributes as $n => $v) {
-			if (!in_array($n, $except, true)) {
-				$fields[$n] = $v;
-			}
-		}
-		//
-		$metafields = $this->getRelated();
-		foreach ($metafields as $n => $v) {
-			$proof = $n;
-			$callee = $v;
-			$child = [];
-			//
-			if (is_numeric($n)) {
-				$proof = $v;
-			}
-			//
-			if (!in_array($proof, $except, true)) {
-				$child = method_exists($this, $callee)
-					? ($this->{$callee}())
-					: ($this->$callee);
-				//
-				$jsonable = (
-					is_subclass_of($child, Model::class) ||
-					is_subclass_of($child, ModelResult::class)
-				);
-				//
-				$fields[$proof] = $jsonable
-					? json_decode($child->asJson())
-					: $child;
-			}
-		}
-		//
-		return json_encode($fields);
-	}
-
-	/**
-	 *	converts the object data to Json string
-	 *
-	 *	@return	string
-	 */
-	public function toJson($options = 0)
-	{
-		return $this->asJson();
-	}
 
 }
 
