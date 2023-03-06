@@ -6,9 +6,16 @@ use PDOException;
 use PDOStatement;
 use Exception;
 use Closure;
+use Asta\Database\Processors\ProcessorInterface;
+use Asta\Database\Processors\Processor;
+use Asta\Database\Query\Grammars\Grammar;
+use Asta\Database\Query\Grammars\GrammarInterface;
+use Asta\Database\Query\InsertBuilder;
+use Asta\Database\Query\UpdateBuilder;
+use Asta\Database\Query\DeleteBuilder;
+
 use Asta\Database\Box\QueryBox;
 use Asta\Database\Query\DatabaseQueryException;
-use Asta\Database\Processors\Processor;
 use Asta\Support\Arr;
 
 /**
@@ -20,28 +27,6 @@ use Asta\Support\Arr;
 class Connection implements ConnectionInterface
 {
 	/**
-	 *	@property	string	$name
-	 *	@property	instanceof \Asta\Database\Processors\Processor $processor
-	 *	@property	string	$dsn
-	 *	@property	string	$database
-	 *	@property	string	$username
-	 *	@property	array	$options
-	 *	@property	$name
-	 */
-	public function __get($name)
-	{
-		if (in_array($name, ['name', 'processor']))
-		{
-			return $this->$name;
-		}
-		if (in_array($name, ['dsn','database','username','options']))
-		{
-			return $this->conn_data[$name];
-		}
-	}
-
-
-	/**
 	 *	@var string $name
 	 */
 	protected $name = null;
@@ -52,7 +37,12 @@ class Connection implements ConnectionInterface
 	protected $handle;
 
 	/**
-	 *	@var \Asta\Database\Processors\Processor $processor
+	 *	@var \Asta\Database\Query\Grammars\GrammarInterface
+	 */
+	protected $grammar;
+
+	/**
+	 *	@var \Asta\Database\Processors\ProcessorInterface
 	 */
 	protected $processor;
 
@@ -82,6 +72,27 @@ class Connection implements ConnectionInterface
 			PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES 'UTF8';",
 		]
 	];
+
+	/**
+	 *	@property	string	$name
+	 *	@property	instanceof \Asta\Database\Processors\Processor $processor
+	 *	@property	string	$dsn
+	 *	@property	string	$database
+	 *	@property	string	$username
+	 *	@property	array	$options
+	 *	@property	$name
+	 */
+	public function __get($name)
+	{
+		if (in_array($name, ['name', 'processor']))
+		{
+			return $this->$name;
+		}
+		if (in_array($name, ['dsn','database','username','options']))
+		{
+			return $this->conn_data[$name];
+		}
+	}
 
 	/**
 	 *	Register errors
@@ -371,7 +382,8 @@ class Connection implements ConnectionInterface
 		$this->conn_data['database'] = $database;
 		$this->conn_data['username'] = $username;
 		$this->conn_data['password'] = $password;
-
+		//
+		$this->grammar = new Grammar();
 		$this->processor = new Processor();
 	}
 
@@ -394,6 +406,67 @@ class Connection implements ConnectionInterface
 		$this->conn_data = null;
 		$this->handle = null;
 		$this->errors = null;
+	}
+
+	/**
+	 *	Returns the corresponding Grammar for this Connection
+	 *
+	 *	@return	\Asta\Database\Query\Grammars\GrammarInterface
+	 */
+	public function getGrammar()
+	{
+		return $this->grammar;
+	}
+
+	/**
+	 *	Returns the corresponding Grammar for this Connection
+	 *
+	 *	@return	\Asta\Database\Processors\ProcessorInterface
+	 */
+	public function getProcessor()
+	{
+		return $this->processor;
+	}
+
+	/**
+	 *	Returns a Insert builder for this Connection
+	 *
+	 *	@return	\Asta\Database\Query\InsertBuilder
+	 */
+	public function getInserter(string $table)
+	{
+		return new InsertBuilder($table, $this);
+	}
+
+	/**
+	 *	Returns a Insert builder for this Connection
+	 *
+	 *	@return	\Asta\Database\Query\UpdateBuilder
+	 */
+	public function getUpdater(string $table)
+	{
+		return new UpdateBuilder($table, $this);
+	}
+
+	/**
+	 *	Returns a Insert builder for this Connection
+	 *
+	 *	@return	\Asta\Database\Query\DeleteBuilder
+	 */
+	public function getRemover(string $table)
+	{
+		return new DeleteBuilder($table, $this);
+	}
+
+	/**
+	 *	Defines a Processor for this Connection
+	 *
+	 *	@param	\Asta\Database\Processors\ProcessorInterface	$processor
+	 *	@return	void
+	 */
+	public function setProcessor(Processor $processor)
+	{
+		$this->processor = $processor;
 	}
 
 	/**
@@ -697,6 +770,7 @@ class Connection implements ConnectionInterface
 		$errors = $this->errors;
 		return $errors;
 	}
+
 
 }
 

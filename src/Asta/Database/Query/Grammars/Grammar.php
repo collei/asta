@@ -11,7 +11,7 @@ use DateTimeInterface;
  *	@since	2022-10-22
  *
  */
-class Grammar
+class Grammar implements GrammarInterface
 {
 	private $leadingSpace = true;
 	private $trailingSpace = false;
@@ -138,6 +138,10 @@ class Grammar
 
 	public function compileWhereChain(array $whereChain)
 	{
+		if (empty($whereChain)) {
+			return '';
+		}
+		//
 		return $this->getLeadingSpace()
 			. 'WHERE ' . implode(' ', $whereChain)
 			. $this->getTrailingSpace();

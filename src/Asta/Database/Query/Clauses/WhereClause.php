@@ -24,14 +24,11 @@ class WhereClause extends Builder
 	public function __construct(Builder $parentQuery)
 	{
 		$this->parentClass = get_class($parentQuery);
-		$this->parentConnection = $parentQuery->getConnection();
-		$this->parentGrammar = $parentQuery->getGrammar();
-		$this->parentProcessor = $parentQuery->getProcessor();
 		//
 		parent::__construct(
-			$this->parentConnection,
-			$this->parentGrammar,
-			$this->parentProcessor
+			$this->parentConnection = $parentQuery->getConnection(),
+			$this->parentGrammar = $parentQuery->getGrammar(),
+			$this->parentProcessor = $parentQuery->getProcessor()
 		);
 	}
 

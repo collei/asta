@@ -73,11 +73,6 @@ abstract class Model implements Jsonable
 	protected $attributes = [];
 
 	/**
-	 *	@var array $attributes
-	 */
-	protected $attributes = [];
-
-	/**
 	 *	@var array $original
 	 */
 	protected $original = [];
@@ -107,7 +102,17 @@ abstract class Model implements Jsonable
 	/**
 	 *	@var array
 	 */
-	protected $readonly = [];
+	protected $hasManyRelationsCache = [];
+
+	/**
+	 *	@var array
+	 */
+	protected $belongsToRelationsCache = [];
+
+	/**
+	 *	@var array
+	 */
+	protected $belongsToManyRelationsCache = [];
 
 	/**
 	 *	@var array
@@ -189,6 +194,30 @@ abstract class Model implements Jsonable
 	}
 
 	/**
+	 * Get the connection used by the model.
+	 *
+	 * @return \Asta\Database\Connections\ConnectionInterface
+	 */
+	public function getConnection()
+	{
+		return $this->connection;
+	}
+
+	/**
+	 * Get the active Builder instance used by the model.
+	 *
+	 * @return \Asta\Database\Query\Builder
+	 */
+	public function getBuilder()
+	{
+		if ($this->builder) {
+			return $this->builder;
+		}
+		//
+		return $this->builder = new Builder($this->getConnection());
+	}
+
+	/**
 	 * Get the table associated with the model.
 	 *
 	 * @return string
@@ -259,6 +288,16 @@ abstract class Model implements Jsonable
 	}
 
 	/**
+	 * Tells if the record data was inserted in the current request cycle.
+	 *
+	 * @return bool
+	 */
+	public function isRecent()
+	{
+		return $this->wasRecentlyCreated;
+	}
+
+	/**
 	 * Get the type of the primary key.
 	 *
 	 * @return string
@@ -266,21 +305,6 @@ abstract class Model implements Jsonable
 	public function getKeyType()
 	{
 		return $this->keyType ?? 'int';
-	}
-
-	/**
-	 * Define the primary key field name.
-	 *
-	 * @param string $type
-	 * @return $this
-	 */
-	public function setKey(string $type)
-	{
-		if (! empty($type)) {
-			$this->keyType = $type;
-		}
-		//
-		return $this;
 	}
 
 	/**
@@ -337,7 +361,7 @@ abstract class Model implements Jsonable
 	 */
 	protected static function catterTableName()
 	{
-		$names = explode('\\', get_class());
+		$names = explode('\\', get_called_class());
 		//
 		return Str::pluralize(Str::snake(array_pop($names)));
 	}
@@ -450,6 +474,21 @@ abstract class Model implements Jsonable
 		}
 		//
 		$this->attributes[$name] = $value;
+	}
+
+	/**
+	 * Fills the attributes
+	 *
+	 * @param array $attributes
+	 * @return $this
+	 */
+	protected function fill(array $attributes)
+	{
+		foreach ($attributes as $key => $value) {
+			$this->setAttribute($key, $value);
+		}
+		//
+		return $this;
 	}
 
 	/**
@@ -780,114 +819,51 @@ abstract class Model implements Jsonable
 		Model::performDelete($this);
 	}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 	/**
 	 *	Performs database insertion or update
 	 *
-	 *	@param	\Asta\Database\Yanfei\Model	$model
+	 *	@param	\Asta\Database\Repository\Model	$model
 	 *	@return	mixed
 	 */
 	protected static function performSave(Model $model)
 	{
 		$table = $model->getTable();
-		$key = $model->getKey();
-		$timeCreated = $model->getCreatedAt();
-		$timeUpdated = $model->getUpdatedAt();
-		$data = Arr::rekey(
-			Arr::exceptKeys($model->attributes, [ $key, $timeCreated, $timeUpdated ]),
-			function ($arrayKey) { return Str::toSnake($arrayKey); }
-		);
 		//
-		if (!$model->isNew() && $model->hasAttribute($key)) {
-			$updater = DB::update($table);
+		$attributes = Arr::exceptKeys($model->attributes, [
+			$key = $model->getKey(),
+			$timeCreated = $model->getCreatedAt(),
+			$timeUpdated = $model->getUpdatedAt()
+		]);
+		//
+		$data = Arr::rekey($attributes, function ($arrayKey) {
+			return Str::toSnake($arrayKey);
+		});
+		//
+		if (!$model->isRecent() && $model->hasAttribute($key)) {
+			$updater = $this->getConnection()->getUpdater($table);
 			//
 			foreach ($data as $n => $v) {
 				$updater->set($n, $v);
 			}
 			//
-			return $updater->where()
-				->is($key, $model->$key)
-				->execute();
+			if ($this->hasTimestamps()) {
+				$updater->set($timeUpdated, new DateTime());
+			}
+			//
+			return $updater
+					->where($key, '=', $model->$key)
+					->execute();
 		} else {
-			if ($model->hasTimestamps()) {
-				$data[$model->getUpdatedAt()] = ':updated_at'; 
+			$inserter = $this->getConnection()->getInserter($table);
+			//
+			$inserter->fields($data);
+			//
+			if ($this->hasTimestamps()) {
+				$inserter->field($timeCreated, new DateTime());
 			}
 			//
 			$model->setAttribute(
-				$key, DB::into($table)->insert($data)->done()
+				$key, $inserter->execute()
 			);
 			//
 			return $model;
@@ -897,7 +873,7 @@ abstract class Model implements Jsonable
 	/**
 	 *	Performs data deletion
 	 *
-	 *	@param	\Asta\Database\Yanfei\Model	$model
+	 *	@param	\Asta\Database\Repository\Model	$model
 	 *	@return	mixed
 	 */
 	protected static function performDelete(Model $model)
@@ -905,11 +881,12 @@ abstract class Model implements Jsonable
 		$table = $model->getTable();
 		$key = $model->getKey();
 		//
-		if (!$model->isNew() && $model->hasAttribute($key)) {
-			$eraser = DB::performDelete($table);
-			return $eraser->where()
-				->is($key, $model->$key)
-				->execute();
+		if (!$model->isRecent() && $model->hasAttribute($key)) {
+			$remover = $this->getConnection()->getRemover($table);
+			//
+			return $remover
+					->where($key, '=', $model->$key)
+					->execute();
 		}
 		//
 		return false;
@@ -960,47 +937,109 @@ abstract class Model implements Jsonable
 	 *
 	 *	@param	array	$rowset
 	 *	@param	bool	$asCollection
-	 *	@param	string	$collectionType
-	 *	@return	\Asta\Database\Repository\Model
+	 *	@param	string	$modelClass
+	 *	@return	\Asta\Database\Repository\Model[]
 	 */
 	protected static function fillModelList(
-		array $rowset, bool $asCollection = false,
-		string $collectionType = Model::class
+		array $rowset, bool $asCollection = false, string $modelClass = null
 	) {
 		$list = [];
 		//
-		foreach ($rowset as $row) {
-			$list[] = $collectionType::fromRow($row);
-		}
+		$modelClass = $modelClass ?? Model::class;
 		//
-		if ($asCollection) {
-			return ModelResult::fromTypedArray($list, $collectionType, false);
+		foreach ($rowset as $row) {
+			$list[] = $modelClass::fromRow($row);
 		}
 		//
 		return $list;
-	}
-
-	protected static function tableFromModel($model)
-	{
-		return (new $model)->askTableName();
 	}
 
 	/**
 	 *	Returns a Model instance from the database $id.
 	 *
 	 *	@param	int	$id
-	 *	@return	\Asta\Database\Yanfei\Model
+	 *	@return	\Asta\Database\Repository\Model
 	 */
 	public static function findById(int $id)
 	{
 		return static::fromId($id);
 	}
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 	/**
 	 *	Returns a Model instance from the database $id
 	 *
 	 *	@param	int	$id
-	 *	@return	\Asta\Database\Yanfei\Model
+	 *	@return	\Asta\Database\Repository\Model
 	 */
 	public static function fromId(int $id)
 	{
@@ -1027,7 +1066,7 @@ abstract class Model implements Jsonable
 	 *	@param	mixed	$data	int index of the record/query fields to be matched
 	 *	@param	int		$rowsPerPage	number of results per page
 	 *	@param	int		$page	which page to query
-	 *	@return	\Asta\Database\Yanfei\Model|\Asta\Database\Yanfei\ModelResult
+	 *	@return	\Asta\Database\Repository\Model|\Asta\Database\Repository\Model[]
 	 */
 	public static function from(
 		$data, int $rowsPerPage = null, int $page = null
@@ -1066,7 +1105,7 @@ abstract class Model implements Jsonable
 	/**
 	 *	Creates a new instance of the given Model
 	 *
-	 *	@return	\Asta\Database\Yanfei\Model
+	 *	@return	\Asta\Database\Repository\Model
 	 */
 	public static function new()
 	{
@@ -1112,7 +1151,7 @@ abstract class Model implements Jsonable
 	 *		Person::all('name asc', 'date_birth desc')
 	 *
 	 *	@param	string	...$orderBy
-	 *	@return	\Asta\Database\Yanfei\ModelResult
+	 *	@return	\Asta\Database\Repository\ModelResult
 	 */
 	public static function all(string ...$orderBy)
 	{
@@ -1152,7 +1191,7 @@ abstract class Model implements Jsonable
 	 *	@param	int	$page
 	 *	@param	int	$rowsPerPage
 	 *	@param	string	...$orderBy
-	 *	@return	\Asta\Database\Yanfei\ModelResult
+	 *	@return	\Asta\Database\Repository\ModelResult
 	 */
 	public static function paged(int $page, int $rowsPerPage = null, string ...$orderBy)
 	{
@@ -1185,20 +1224,6 @@ abstract class Model implements Jsonable
 		}
 		//
 		return ModelResult::fromEmpty();
-	}
-
-	/**
-	 * Returns the model's query Builder
-	 *
-	 * @return \Asta\Database\Query\Builder
-	 */
-	protected function getBuilder()
-	{
-		if ($this->builder) {
-			return $this->builder;
-		}
-		//
-		return $this->builder = Builder::new()->from($this->getTable());
 	}
 
 	/**
@@ -1245,11 +1270,10 @@ abstract class Model implements Jsonable
 	 *	@param	mixed	$relatedModelClass
 	 *	@param	string	$foreignKey
 	 *	@param	string	$localKey
-	 *	@return	\Asta\Database\Yanfei\ModelResult
+	 *	@return	\Asta\Database\Repository\Model[]
 	 */
 	public function hasMany(
-		$relatedModelClass,
-		string $foreignKey = null, string $localKey = null
+		$relatedModelClass, string $foreignKey = null, string $localKey = null
 	) {
 		if (!is_subclass_of($relatedModelClass, Model::class)) {
 			throw new InvalidArgumentException(
@@ -1257,18 +1281,18 @@ abstract class Model implements Jsonable
 			);
 		}
 		//
-		if (!isset($this->relationCache['has_many'][$relatedModelClass])) {
+		if (!isset($this->hasManyRelationsCache[$relatedModelClass])) {
 			$oneToMany = new OneToMany(
 				$this, new $relatedModelClass, $foreignKey, $localKey
 			);
 			//
 			$results = $oneToMany->fetch();
 			//
-			$this->relationCache['has_many'][$relatedModelClass] =
+			$this->hasManyRelationsCache[$relatedModelClass] =
 				static::fillModelList($results, true, $relatedModelClass);
 		}
 		//
-		return $this->relationCache['has_many'][$relatedModelClass];
+		return $this->hasManyRelationsCache[$relatedModelClass];
 	}
 
 	/**
@@ -1276,7 +1300,7 @@ abstract class Model implements Jsonable
 	 *
 	 *	@param	mixed	$relatedModelClass
 	 *	@param	string	$localForeign
-	 *	@return	\Asta\Database\Yanfei\Model
+	 *	@return	\Asta\Database\Repository\Model
 	 */
 	public function belongsTo($relatedModelClass, string $localForeign = null)
 	{
@@ -1286,16 +1310,16 @@ abstract class Model implements Jsonable
 			);
 		}
 		//
-		if (!isset($this->relationCache['belongs_to'][$relatedModelClass])) {
+		if (!isset($this->belongsToRelationsCache[$relatedModelClass])) {
 			$localForeign = $localForeign ?? ((new $relatedModelClass)->getEntity() . '_id');
 			$localForeign = Str::toCamel($localForeign);
 			$localForeignId = $this->$localForeign;
 			//
-			$this->relationCache['belongs_to'][$relatedModelClass] =
+			$this->belongsToRelationsCache[$relatedModelClass] =
 				$relatedModelClass::fromId($localForeignId);
 		}
 		//
-		return $this->relationCache['belongs_to'][$relatedModelClass];
+		return $this->belongsToRelationsCache[$relatedModelClass];
 	}
 
 	/**
@@ -1303,14 +1327,14 @@ abstract class Model implements Jsonable
 	 *
 	 *	@param	mixed	$relatedModelClass
 	 *	@param	string	$intermediate
-	 *	@param	string	$foreignNear
+	 *	@param	string	$foreign
 	 *	@param	string	$foreignFar
-	 *	@return	\Asta\Database\Yanfei\ModelResult
+	 *	@return	\Asta\Database\Repository\Model[]
 	 */
 	public function belongsToMany(
 		$relatedModelClass,
 		string $intermediate = null,
-		string $foreignNear = null,
+		string $foreign = null,
 		string $foreignFar = null
 	) {
 		if (!is_subclass_of($relatedModelClass, Model::class)) {
@@ -1320,25 +1344,29 @@ abstract class Model implements Jsonable
 		}
 		//
 		if (
-			!isset($this->relationCache['belongs_to_many'][$relatedModelClass])
+			!isset($this->belongsToManyRelationsCache[$relatedModelClass])
 		) {
 			$manyToMany = new ManyToMany(
 				$this,
 				new $relatedModelClass(),
 				$intermediate,
-				$foreignNear,
+				$foreign,
 				$foreignFar
 			);
 			//
-			$this->relationCache['belongs_to_many'][$relatedModelClass] = 
+			$this->belongsToManyRelationsCache[$relatedModelClass] = 
 				static::fillModelList(
 					$manyToMany->fetch(), true, 	$relatedModelClass
 				);
 		}
 		//
-		return $this->relationCache['belongs_to_many'][$relatedModelClass];
+		return $this->belongsToManyRelationsCache[$relatedModelClass];
 	}
 
+	public function toJson($options = 0)
+	{
+		return json_encode($this);
+	}
 
 
 }

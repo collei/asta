@@ -3,13 +3,13 @@ namespace Asta\Database\Processors;
 
 
 /**
- *	Database connection
+ *	Database query processor
  *
  *	@author	Collei de Laravel, Collei Inc. <collei@collei.com.br>
  *	@since	2022-10-22
  *
  */
-class Processor
+class Processor implements ProcessorInterface
 {
 }
 

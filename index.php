@@ -6,7 +6,7 @@ use Asta\Database\Repository\Model;
 
 class Produto extends Model
 {
-	//
+	protected $table = 'produtos';
 }
 
 

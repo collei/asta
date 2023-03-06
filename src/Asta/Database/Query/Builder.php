@@ -3,9 +3,9 @@ namespace Asta\Database\Query;
 
 use Asta\Database\Connections\Connection;
 use Asta\Database\Connections\ConnectionInterface;
-use Asta\Database\Processors\Processor;
+use Asta\Database\Processors\ProcessorInterface;
+use Asta\Database\Query\Grammars\GrammarInterface;
 use Asta\Database\Traits\CastsValues;
-use Asta\Database\Query\Grammars\Grammar;
 use Asta\Database\Query\Clauses\JoinClause;
 
 use Closure;
@@ -101,7 +101,7 @@ class Builder
 	/**
 	 * @var array
 	 */
-	private $operators = [
+	protected $operators = [
 		'=', '<', '<=', '>', '>=', '<>', '!=', '<=>',
 		'like', 'like binary', 'not like', 'ilike',
 		'&', '|', '^', '<<', '>>', '&~', 'is', 'is not',
@@ -113,31 +113,21 @@ class Builder
 	/**
 	 * @var array
 	 */
-	private $bitwiseOperators = [
+	protected $bitwiseOperators = [
 		'&', '|', '^', '<<', '>>', '&~',
 	];
 
 	/**
 	 * @var Connection
 	 */
-	private $connection;
-
-	/**
-	 * @var Grammar
-	 */
-	private $grammar;
-
-	/**
-	 * @var Processor
-	 */
-	private $processor;
+	protected $connection;
 
 	/**
 	 * Returns the Builder's connection
 	 *
 	 * @return ConnectionInterface
 	 */
-	protected function getConnection()
+	public function getConnection()
 	{
 		return $this->connection;
 	}
@@ -147,9 +137,9 @@ class Builder
 	 *
 	 * @return Grammar
 	 */
-	protected function getGrammar()
+	public function getGrammar()
 	{
-		return $this->grammar;
+		return $this->connection->getGrammar();
 	}
 
 	/**
@@ -157,9 +147,9 @@ class Builder
 	 *
 	 * @return Processor
 	 */
-	protected function getProcessor()
+	public function getProcessor()
 	{
-		return $this->processor;
+		return $this->connection->getProcessor();
 	}
 
 	/**
@@ -320,15 +310,15 @@ class Builder
 		$value = $this->castValue($value, $alternative);
 		//
 		if (is_string($value) || $value instanceof Stringable) {
-			return $this->grammar->valueToSqlString($value);
+			return $this->getGrammar()->valueToSqlString($value);
 		} elseif ($value instanceof DateTime) {
-			return $this->grammar->valueToSqlDateTime($value);
+			return $this->getGrammar()->valueToSqlDateTime($value);
 		} elseif (is_float($value)) {
-			return $this->grammar->valueToSqlFloat($value);
+			return $this->getGrammar()->valueToSqlFloat($value);
 		} elseif (is_int($value)) {
-			return $this->grammar->valueToSqlInt($value);
+			return $this->getGrammar()->valueToSqlInt($value);
 		} elseif (is_bool($value)) {
-			return $this->grammar->valueToSqlBoolean($value);
+			return $this->getGrammar()->valueToSqlBoolean($value);
 		} elseif (is_null($value)) {
 			return 'NULL';
 		}
@@ -341,7 +331,7 @@ class Builder
 			foreach ($value as $subvalue) {
 				$passed[] = $this->prepareValue($subvalue);
 			}
-			return $this->grammar->wrapItInParenthesis(implode(',', $passed));
+			return $this->getGrammar()->wrapItInParenthesis(implode(',', $passed));
 		}
 		//
 		if ($value instanceof Expression) {
@@ -349,14 +339,14 @@ class Builder
 		}
 		//
 		if ($value instanceof Builder) {
-			return $this->grammar->wrapItInParenthesis($value->toSql());
+			return $this->getGrammar()->wrapItInParenthesis($value->toSql());
 		}
 		//
 		if (preg_match('#^(\:n\d+\:)$#i', $value, $found)) {
 			return $this->retrieveBound($found[1]);
 		}
 		//
-		if (preg_match($this->grammar->getRegexFieldspecWhere(), $value)) {
+		if (preg_match($this->getGrammar()->getRegexFieldspecWhere(), $value)) {
 			return $value;
 		}
 		//
@@ -366,22 +356,19 @@ class Builder
 	/**
 	 **/
 
-	public function __construct(
-		ConnectionInterface $connection, Grammar $grammar, Processor $processor
-	) {
+	public function __construct(ConnectionInterface $connection)
+	{
 		$this->connection = $connection;
-		$this->grammar = $grammar;
-		$this->processor = $processor;
 	}
 
 	public static function new()
 	{
-		return new static(new Connection(), new Grammar(), new Processor());
+		return new static(new Connection());
 	}
 
 	public function newQuery()
 	{
-		return new static($this->connection, $this->grammar, $this->processor);
+		return new static($this->connection);
 	}
 
 	public function forSubQuery()
@@ -413,8 +400,8 @@ class Builder
 		$callback = $query;
 		$callback($query = $this->forSubQuery());
 		$query = $query->toSql();
-		$this->columns[] = $this->grammar->compileAliasing(
-			$this->grammar->wrapItInParenthesis($query), $as
+		$this->columns[] = $this->getGrammar()->compileAliasing(
+			$this->getGrammar()->wrapItInParenthesis($query), $as
 		);
 		//
 		return $this;
@@ -427,7 +414,7 @@ class Builder
 		}
 		//
 		$this->from = $as
-			? $this->grammar->compileAliasing($table, $as)
+			? $this->getGrammar()->compileAliasing($table, $as)
 			: $table;
 		//
 		return $this;
@@ -437,8 +424,8 @@ class Builder
 	{
 		$table($query = $this->forSubQuery());
 		//
-		$this->from = $this->grammar->compileAliasing(
-			$this->grammar->wrapItInParenthesis($query->toSql()), $as
+		$this->from = $this->getGrammar()->compileAliasing(
+			$this->getGrammar()->wrapItInParenthesis($query->toSql()), $as
 		);
 		//
 		return $this;
@@ -636,11 +623,11 @@ class Builder
 					$this->prepareValue($item[3])
 				);
 				//
-				$chain[] = $this->grammar->compileExpression(
+				$chain[] = $this->getGrammar()->compileExpression(
 					$item[1], $item[2], $item[3]
 				);
 			} elseif ($type=='nested') {
-				$chain[] = $this->grammar->compileExists(
+				$chain[] = $this->getGrammar()->compileExists(
 					$item[1]->toSql()
 				);
 			}
@@ -670,7 +657,7 @@ class Builder
 
 					$callback($query = $this->forSubQuery());
 
-					$column = $this->grammar->compileAliasing(
+					$column = $this->getGrammar()->compileAliasing(
 						$query->toSql(),
 						(is_int($as) ? $this->generateAlias() : $as)
 					);
@@ -681,7 +668,7 @@ class Builder
 				$columns[] = $column;
 			}
 			//
-			$sql = $this->grammar->compileSelect(
+			$sql = $this->getGrammar()->compileSelect(
 				$this->columns,
 				$this->from,
 				($this->joins ?? []),
@@ -701,17 +688,17 @@ class Builder
 				$table = $table[$as]->toSql();
 			}
 			//
-			$sql .= $this->grammar->compileJoin($type, $table, $as, $whereChain);
+			$sql .= $this->getGrammar()->compileJoin($type, $table, $as, $whereChain);
 		} else {
-			$sql .= $this->grammar->compileWhereChain($whereChain);
+			$sql .= $this->getGrammar()->compileWhereChain($whereChain);
 		}
 		//
 		if ($this->offset) {
-			$sql .= $this->grammar->compileOffsetClause($this->limit);
+			$sql .= $this->getGrammar()->compileOffsetClause($this->limit);
 		}
 		//
 		if ($this->limit) {
-			$sql .= $this->grammar->compileLimitClause($this->limit);
+			$sql .= $this->getGrammar()->compileLimitClause($this->limit);
 		}
 		//
 		return $sql;
