@@ -363,7 +363,7 @@ class Builder
 
 	public static function new()
 	{
-		return new static(new Connection());
+		return new static(Connection::getFromPool());
 	}
 
 	public function newQuery()
@@ -562,6 +562,21 @@ class Builder
 		return $this;
 	}
 
+	public function whereNull($column)
+	{
+		return $this->where($column, 'is', 'null');
+	}
+
+	public function andWhereNull($column)
+	{
+		return $this->where($column, 'is', 'null', 'and');
+	}
+
+	public function orWhereNull($column)
+	{
+		return $this->where($column, 'is', 'null', 'or');
+	}
+
 	public function andWhere($column, $operator = null, $value = null)
 	{
 		return $this->where($column, $operator, $value, 'and');
@@ -638,7 +653,7 @@ class Builder
 		return $chain;
 	}
 
-	public function toSql()
+	protected function toSql()
 	{
 		$sql = '';
 		$headed = false;
@@ -702,6 +717,11 @@ class Builder
 		}
 		//
 		return $sql;
+	}
+
+	public function execute()
+	{
+		return $this->getConnection()->select($this->toSql());
 	}
 
 	public function __toString()

@@ -5,6 +5,7 @@ use InvalidArgumentException;
 use LogicException;
 
 use Asta\Database\Interfaces\Repository\CasterProperties;
+use Asta\Database\Connections\Connection;
 
 use Asta\Database\DatabaseException;
 use Asta\Database\Query\Builder;
@@ -200,6 +201,10 @@ abstract class Model implements Jsonable
 	 */
 	public function getConnection()
 	{
+		if (! isset($this->connection)) {
+			$this->connection = Connection::getFromPool();
+		}
+
 		return $this->connection;
 	}
 
@@ -214,7 +219,20 @@ abstract class Model implements Jsonable
 			return $this->builder;
 		}
 		//
-		return $this->builder = new Builder($this->getConnection());
+		return $this->builder = Builder::new();
+	}
+
+	/**
+	 *	Returns a Builder instance for a static context.
+	 *
+	 *	@static
+	 *	@return	\Asta\Database\Query\Builder
+	 */
+	protected static function getBuilderForStatic()
+	{
+		$model = new static();
+		//
+		return $model->getBuilder()->from($model->getTable());
 	}
 
 	/**
@@ -463,7 +481,7 @@ abstract class Model implements Jsonable
 	 * @param mixed $value
 	 * @return void
 	 */
-	public static function setAttribute(string $name, $value)
+	public function setAttribute(string $name, $value)
 	{
 		if ($this->hasAttributeSetter($name)) {
 			$this->callAttributeSetter($name, $value);
@@ -936,13 +954,11 @@ abstract class Model implements Jsonable
 	 *	Returns the data as a list of specific or generic Model instances
 	 *
 	 *	@param	array	$rowset
-	 *	@param	bool	$asCollection
 	 *	@param	string	$modelClass
 	 *	@return	\Asta\Database\Repository\Model[]
 	 */
-	protected static function fillModelList(
-		array $rowset, bool $asCollection = false, string $modelClass = null
-	) {
+	protected static function fillModelList(array $rowset, string $modelClass = null)
+	{
 		$list = [];
 		//
 		$modelClass = $modelClass ?? Model::class;
@@ -965,76 +981,6 @@ abstract class Model implements Jsonable
 		return static::fromId($id);
 	}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 	/**
 	 *	Returns a Model instance from the database $id
 	 *
@@ -1044,16 +990,17 @@ abstract class Model implements Jsonable
 	public static function fromId(int $id)
 	{
 		$model = new static();
+		$table = $model->getTable();
 		$key = $model->getKey();
-		$data = DB::from($model->getTable())
-					->select('*')
-					->where()->is($key, $id)
-					->gather();
 		//
-		if (!is_null($data)) {
-			if (count($data) >= 1) {
-				return static::fillModel($data[0]);
-			}
+		$data = $model->getConnection()->getBuilder()
+					->from($table)
+					->select('*')
+					->where($key, '=', $id)
+					->execute();
+		//
+		if (!is_null($data) && (count($data) >= 1)) {
+			return static::fromRow($data[0]);
 		}
 		//
 		return null;
@@ -1068,38 +1015,60 @@ abstract class Model implements Jsonable
 	 *	@param	int		$page	which page to query
 	 *	@return	\Asta\Database\Repository\Model|\Asta\Database\Repository\Model[]
 	 */
-	public static function from(
-		$data, int $rowsPerPage = null, int $page = null
-	) {
-		if (is_int($data) || is_numeric($data)) {
-			return static::fromId((int)(double)$data);
-		} else {
-			$first = true;
-			$query = DB::from(static::askTableName())
-						->select('*')
-						->pageSize($rowsPerPage)
-						->page($page)
-						->where();
-			//
-			foreach ($data as $n => $v) {
-				if (!$first) {
-					$query->and();
-				}
-				$query->is($n, $v);
-			}
-			//
-			$data = $query->gather();
-			if (!is_null($data)) {
-				$count = count($data);
-				if ($count == 1) {
-					return static::fillModel($data[0]);
-				} elseif ($count > 1) {
-					return static::fillModelList($data, true, static::class);
-				}
-			}
-			//
-			return null;
+	public static function from($criteria, int $rowsPerPage = null, int $page = null)
+	{
+		if (is_int($criteria) || is_numeric($criteria)) {
+			return static::fromId(
+				(int)(double)$criteria
+			);
 		}
+		//
+		if (is_array($criteria)) {
+			$query = static::getBuilderForStatic()->select('*');
+			//
+			foreach ($criteria as $field => $conditions) {
+				if (is_int($field) && is_array($conditions)) {
+					switch (count($conditions)) {
+						case 0:
+							break;
+						case 1:
+							$query->whereNull($conditions[0]);
+							break;
+						case 2:
+							$query->where($conditions[0], '=', $conditions[1]);
+							break;
+						default:
+							$query->where($conditions[0], $conditions[1], $conditions[2]);
+					}
+				} else {
+					if (is_array($conditions)) {
+						$query->whereIn($field, $conditions);
+					} else {
+						$query->where($field, '=', $conditions);
+					}
+				}
+			}
+			//
+			if ($rowsPerPage > 0) {
+				$query->pageSize($rowsPerPage);
+			}
+			//
+			if ($page > 0) {
+				$query->page($page);
+			}
+			//
+			if ($result = $query->execute()) {
+				$count = count($result);
+				//
+				if ($count == 1) {
+					return static::fromRow($result[0]);
+				} elseif ($count > 1) {
+					return static::fillModelList($result, static::class);
+				}
+			}
+		}
+		//
+		return null;
 	}
 
 	/**
@@ -1119,11 +1088,17 @@ abstract class Model implements Jsonable
 	 */
 	public static function count()
 	{
-		$info = DB::from(static::askTableName())
-					->select('COUNT(*) AS [numberofrows]')
-					->gather(true);
+		$result = static::getBuilderForStatic()
+					->select('COUNT(*) AS [tablenumberofrows]')
+					->execute();
 		//
-		return $info[0]->numberofrows;
+		if (empty($result)) {
+			return 0;
+		}
+		//
+		return is_object($result[0])
+					? $result[0]->tablenumberofrows
+					: $result[0]['tablenumberofrows'];
 	}
 
 	/**
@@ -1134,7 +1109,9 @@ abstract class Model implements Jsonable
 	public static function pageCount(int $pageSize)
 	{
 		$rowCount = static::count();
+		//
 		$pageSize = ($pageSize < 1) ? $rowCount : $pageSize;
+		//
 		$pages = \intdiv($rowCount, $pageSize);
 		//
 		if (($rowCount % $pageSize) > 0) {
@@ -1151,7 +1128,7 @@ abstract class Model implements Jsonable
 	 *		Person::all('name asc', 'date_birth desc')
 	 *
 	 *	@param	string	...$orderBy
-	 *	@return	\Asta\Database\Repository\ModelResult
+	 *	@return	\Asta\Database\Repository\Model[]
 	 */
 	public static function all(string ...$orderBy)
 	{
@@ -1170,15 +1147,13 @@ abstract class Model implements Jsonable
 			}
 		}
 		//
-		echo '<div>'.__FILE__.','.__LINE__.','.__METHOD__.': $query->gather() not implemented: @todo implement it.</div>';
-		//$query = $query->gather();
-		return $query->toSql();
+		$result = $query->execute();
 		//
-//		if (!is_null($query)) {
-//			return self::fillModelList($query, true, static::class);
-//		}
+		if (!is_null($result)) {
+			return self::fillModelList($result, static::class);
+		}
 		//
-//		return ModelResult::fromEmpty();
+		return $result;
 	}
 
 	/**
@@ -1196,10 +1171,10 @@ abstract class Model implements Jsonable
 	public static function paged(int $page, int $rowsPerPage = null, string ...$orderBy)
 	{
 		$page = ($page > 0) ? $page : 1;
-		$rowsPerPage = $rowsPerPage ?? 10;
+		//
 		$rowsPerPage = ($rowsPerPage > 0) ? $rowsPerPage : 10;
 		//
-		$query = DB::from(static::askTableName())
+		$query = static::getBuilderForStatic()
 					->select('*')
 					->page($page)
 					->pageSize($rowsPerPage);
@@ -1208,11 +1183,10 @@ abstract class Model implements Jsonable
 			$elements = '';
 			//
 			if (
-				preg_match('/^(\s*(\w+(\.\w+)*)\s+(asc|desc)\s*)$/i', $ord, $elements)
+				preg_match('/^(\\w+(\\.\\w+)*)\\s+(asc|desc)$/i', $ord, $elements)
 			) {
 				$query->orderBy(
-					$elements[2],
-					strtolower($elements[4] ?? '') == 'desc'
+					$elements[1], strtolower($elements[3] ?? '') == 'desc'
 				);
 			}
 		}
@@ -1220,7 +1194,7 @@ abstract class Model implements Jsonable
 		$query = $query->gather();
 		//
 		if (!is_null($query)) {
-			return self::fillModelList($query, true, static::class);
+			return self::fillModelList($query, static::class);
 		}
 		//
 		return ModelResult::fromEmpty();
@@ -1232,9 +1206,9 @@ abstract class Model implements Jsonable
 	 *	@param	mixed	$left = null
 	 *	@param	mixed	$middle = null
 	 *	@param	mixed	$right = null
-	 *	@return	\Asta\Database\Query\Clauses\Where
+	 *	@return	\Asta\Database\Query\Builder
 	 */
-	public function where($left = null, $middle = null, $right = null)
+	public static function where($left = null, $middle = null, $right = null)
 	{
 		if ($left ?? $middle ?? $right) {
 			return $this->getBuilder()->where($left, $middle, $right);
@@ -1246,23 +1220,105 @@ abstract class Model implements Jsonable
 	/**
 	 *	Returns a select clause after the join performed
 	 *
-	 *	@return	\Asta\Database\Query\Select
+	 *	@param	mixed	$anotherModel
+	 *	@param	string	$ownedKey = null
+	 *	@return	\Asta\Database\Query\Builder
 	 */
 	public static function join($anotherModel, string $ownedKey = null)
 	{
 		if (!is_subclass_of($anotherModel, Model::class)) {
-			throw new InvalidArgumentException(
-				$anotherModel . ' is not a subclass of ' . Model::class . '.'
-			);
+			throw new InvalidArgumentException(sprintf(
+				'%s is not a subclass of %s.', $anotherModel, Model::class
+			));
 		}
 		//
-		$me = static::askTableName();
-		$there = $anotherModel::askTableName();
+		list($me, $there) = Caller::forStatic(static::class, $anotherModel)->askTableName();
 		//
-		return $this->getBuilder()
+		return static::getBuilderForStatic()
 			->select($me . '.*')
 			->join($there, static::askTableKey(), '=', $ownedKey);
 	}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 	/**
 	 *	Returns a ModelResult collection of all child Models related to the current Model
@@ -1289,7 +1345,7 @@ abstract class Model implements Jsonable
 			$results = $oneToMany->fetch();
 			//
 			$this->hasManyRelationsCache[$relatedModelClass] =
-				static::fillModelList($results, true, $relatedModelClass);
+				static::fillModelList($results, $relatedModelClass);
 		}
 		//
 		return $this->hasManyRelationsCache[$relatedModelClass];
@@ -1356,7 +1412,7 @@ abstract class Model implements Jsonable
 			//
 			$this->belongsToManyRelationsCache[$relatedModelClass] = 
 				static::fillModelList(
-					$manyToMany->fetch(), true, 	$relatedModelClass
+					$manyToMany->fetch(), $relatedModelClass
 				);
 		}
 		//

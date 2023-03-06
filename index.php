@@ -2,14 +2,35 @@
 require __DIR__ . '/vendor/autoload.php';
 
 use Asta\Database\Query\Builder;
+use Asta\Database\Connections\Connection;
 use Asta\Database\Repository\Model;
+use Jeht\Support\Caller;
 
-class Produto extends Model
+$conn = new Connection(
+	'sqlsrv:Server=KAZUHA\SQLEXPRESS;Database=contacta',
+	'contacta',
+	'usrContacta',
+	'1979Bratislava'
+);
+
+class Contact extends Model
 {
-	protected $table = 'produtos';
+	public function dinamarca() {
+		return __METHOD__;
+	}
+}
+
+class Minerador
+{
+	public function dinamarca() {
+		return __METHOD__;
+	}
 }
 
 
+list($cont, $mine) = Caller::for(new Contact(), new Minerador())->dinamarca();
+
+echo '<hr>'.print_r(compact('cont','mine'),true).'<hr>';
 
 function prettyPrintNestedParenthesis($text, bool $return = false)
 {
@@ -48,7 +69,12 @@ function prettyPrintNestedParenthesis($text, bool $return = false)
 
 $client_supplied_flithy_data = "d' or 1=1 or ''='"; //%d\'--\r\n select * from usuarios ";
 
-$produtos = Produto::all();
+$produtos = [
+	Contact::count(),
+	Contact::findById(32),
+	Contact::from([['name', 'like', '%Kami%']]),
+	Contact::all(),
+];
 
 $subquery = Builder::new()->from('attendants', 'a')
 	->join('homes','homes.city','city')
@@ -79,7 +105,7 @@ $querist = Builder::new()->from('clients', 'c')
 			->where('city', 'r.id_city');
 	}, 'countings')->where('r.item_count','>',10)->skip(10)->take(20);
 
-$sql = $querist->toSql();
+$sql = '' . $querist . '';
 
 $builders = compact('produtos','subquery','subwhere','querist');
 
