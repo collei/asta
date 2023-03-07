@@ -1,6 +1,8 @@
 <?php
 require __DIR__ . '/vendor/autoload.php';
 
+//https://social.msdn.microsoft.com/Forums/sqlserver/en-US/d0ce3e96-cb59-42b4-9587-9978d7bdf8ae/cant-connect-to-sqlexpress-on-another-machine-on-lan?forum=sqlexpress
+
 use Asta\Database\Query\Builder;
 use Asta\Database\Connections\Connection;
 use Asta\Database\Repository\Model;
@@ -15,22 +17,39 @@ $conn = new Connection(
 
 class Contact extends Model
 {
-	public function dinamarca() {
-		return __METHOD__;
+	public function type()
+	{
+		return $this->belongsTo(ContactType::class);
+	}
+	public function meanlist()
+	{
+		return $this->hasMany(Mean::class);
 	}
 }
 
-class Minerador
+class Mean extends Model
 {
-	public function dinamarca() {
-		return __METHOD__;
+	public function type()
+	{
+		return $this->belongsTo(MeanType::class);//, 'mean_type_id');
+	}
+	public function person()
+	{
+		return $this->belongsTo(Contact::class);
 	}
 }
 
+class ContactType extends Model
+{
+}
 
-list($cont, $mine) = Caller::for(new Contact(), new Minerador())->dinamarca();
+class MeanType extends Model
+{
+}
 
-echo '<hr>'.print_r(compact('cont','mine'),true).'<hr>';
+
+
+
 
 function prettyPrintNestedParenthesis($text, bool $return = false)
 {
@@ -76,6 +95,24 @@ $produtos = [
 	Contact::all(),
 ];
 
+foreach ($produtos as $tranche) {
+	if (is_array($tranche)) {
+		foreach ($tranche as $item) {
+			if (is_array($means = $item->meanlist)) {
+				foreach ($means as $mean) {
+					$meantype = $mean->type;
+				}
+			}
+		}
+	} elseif ($tranche instanceof Model) {
+		if (is_array($means = $tranche->meanlist)) {
+			foreach ($means as $mean) {
+				$meantype = $mean->type;
+			}
+		}
+	}
+}
+
 $subquery = Builder::new()->from('attendants', 'a')
 	->join('homes','homes.city','city')
 	->select('name','age','city')
@@ -84,7 +121,7 @@ $subquery = Builder::new()->from('attendants', 'a')
 	->orWhere('name','like',"%{$client_supplied_flithy_data}%");
 
 $subwhere = Builder::new()->fromSub(function($query){
-		$query->from('names')->whereIn('origin', ['JP','E"ú','HB','AR']);
+		$query->from('names')->whereIn('origin', ['JP','EU','HB','AR']);
 	}, 'allowed_names')
 	->select('name')
 	->whereIn('language', ['en-us','pt-br','jp-jp'])

@@ -5,30 +5,29 @@ use Asta\Database\Repository\Model;
 use Asta\Database\Query\Builder;
 
 /**
- *	Embodies one-to-many relation
+ *	Embodies belongs-to relation.
  *
  *	@author alarido <alarido.su@gmail.com>
  *	@since 2021-07-xx
  */
-class OneToMany extends Relation
+class BelongsTo extends Relation
 {
 	/**
 	 *	Builds and instantiates
 	 *
-	 *	@param	\Asta\Database\Repository\Model	$near
-	 *	@param	\Asta\Database\Repository\Model	$far
+	 *	@param	\Asta\Database\Repository\Model	$current
+	 *	@param	\Asta\Database\Repository\Model	$parent
 	 *	@param	string	$foreignKey	foreign key in the far table pointing to the local table
-	 *	@param	string	$localKey	local table key
 	 *	@return	void
 	 */
 	public function __construct(
-		Model $near,
-		Model $far,
+		Model $current,
+		Model $parent,
 		string $foreignKey = null,
-		string $localKey = null
+		string $localKey = null,
 	) {
-		$this->left = $near;
-		$this->right = $far;
+		$this->left = $current;
+		$this->right = $parent;
 
 		$this->inferKeys($localKey, $foreignKey);
 	}
@@ -47,10 +46,9 @@ class OneToMany extends Relation
 
 		return $this->getBuilder()->from($farEntity)
 					->select('*')
-					->where($foreign, '=', $this->left->$local)
+					->where($local, '=', $this->left->$local)
 					->execute();
 	}
 	
 }
-
 

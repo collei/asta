@@ -1,7 +1,9 @@
 <?php
-namespace Collei\Database\Relations;
+namespace Asta\Database\Repository\Relations;
 
 use Closure;
+use Asta\Database\Connections\Connection;
+use Asta\Database\Connections\ConnectionInterface;
 
 /**
  *	Embodies basic relation tasks and features
@@ -12,24 +14,122 @@ use Closure;
 abstract class Relation
 {
 	/**
-	 *	@var \Collei\Database\Yanfei\Model $left
+	 *	@var \Asta\Database\Connections\ConnectionInterface
+	 */
+	protected $connection = null;
+
+	/**
+	 *	@var \Asta\Database\Query\Builder
+	 */
+	protected $builder = null;
+
+	/**
+	 *	@var \Asta\Database\Repository\Model
 	 */
 	protected $left = null;
 
 	/**
-	 *	@var \Collei\Database\Yanfei\Model $right
+	 *	@var \Asta\Database\Repository\Model
 	 */
 	protected $right = null;
 
 	/**
-	 *	@var string $leftKey
+	 *	@var string
 	 */
 	protected $leftKey = '';
 
 	/**
-	 *	@var string $rightKey
+	 *	@var string
 	 */
 	protected $rightKey = '';
+
+	/**
+	 *	@var mixed
+	 */
+	protected $result = '';
+
+	/**
+	 *	Builds and instantiates
+	 *
+	 */
+	public function __construct()
+	{
+	}
+
+	public function __get(string $name)
+	{
+		if ($this->result instanceof Model) {
+			if ($this->result->hasAttribute($name)) {
+				return $this->result->$name;
+			}
+			//
+			if (method_exists($this->result, $name)) {
+				$arguments = func_get_args();
+				//
+				return $this->result->$name(...$arguments);
+			}
+			//
+			return $this->result->$name;
+		}
+	}
+
+	/**
+	 * Get the connection used by the model.
+	 *
+	 * @return \Asta\Database\Connections\ConnectionInterface
+	 */
+	public function getConnection()
+	{
+		if (! isset($this->connection)) {
+			$this->connection = Connection::getFromPool();
+		}
+
+		return $this->connection;
+	}
+
+	/**
+	 * Get the active Builder instance used by the model.
+	 *
+	 * @return \Asta\Database\Query\Builder
+	 */
+	public function getBuilder()
+	{
+		if ($this->builder) {
+			return $this->builder;
+		}
+		//
+		return $this->builder = $this->getConnection()->getBuilder();
+	}
+
+	/**
+	 *	Returns a Builder instance for a static context.
+	 *
+	 *	@static
+	 *	@return	\Asta\Database\Query\Builder
+	 */
+	protected static function getBuilderForStatic()
+	{
+		$model = new static();
+		//
+		return $model->getBuilder()->from($model->getTable());
+	}
+
+	/**
+	 *	Fetch the resulting data from relatrion
+	 *
+	 *	@param	\Closure	$transform
+	 *	@return	mixed
+	 */
+	public function fetch(Closure $transform = null)
+	{
+		$this->result = $data = $this->fetchData();
+		//
+		if (! is_null($transform)) {
+			return $this->result = $transform($data);
+		}
+		//
+		return $data;
+	}
 
 	/**
 	 *	Tries to infer the keys of the involved left and right tables
@@ -47,34 +147,13 @@ abstract class Relation
 	/**
 	 *	Returns the data from the relation results
 	 *
-	 *	@abstract
 	 *	@return	mixed
 	 */
-	abstract protected function fetchData();
-
-	/**
-	 *	Builds and instantiates
-	 *
-	 */
-	public function __construct()
+	protected function fetchData()
 	{
-	}
-
-	/**
-	 *	Fetch the resulting data from relatrion
-	 *
-	 *	@param	\Closure	$transform
-	 *	@return	mixed
-	 */
-	public function fetch(Closure $transform = null)
-	{
-		$data = $this->fetchData();
-
-		if (!is_null($transform) and is_callable($transform))
-		{
-			return $transform($data);
-		}
-		return $data;
+		throw new RuntimeException(sprintf(
+			'Class %s has not implemented the method %s', get_called_class(), __METHOD__
+		));
 	}
 
 }

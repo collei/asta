@@ -9,8 +9,9 @@ use Asta\Database\Connections\Connection;
 
 use Asta\Database\DatabaseException;
 use Asta\Database\Query\Builder;
-use Asta\Database\Relations\OneToMany;
-use Asta\Database\Relations\ManyToMany;
+use Asta\Database\Repository\Relations\OneToMany;
+use Asta\Database\Repository\Relations\ManyToMany;
+use Asta\Database\Repository\Relations\BelongsTo;
 use Asta\Database\Interfaces\Repository\Castable;
 use Asta\Database\Interfaces\Repository\CastsInboundAttributes;
 use Asta\Database\Interfaces\Repository\CastsAttributes;
@@ -86,9 +87,7 @@ abstract class Model implements Jsonable
 	/**
 	 *	@var array
 	 */
-	protected $readonly = [
-		'id'
-	];
+	protected $readonly = ['id'];
 
 	/**
 	 *	@var array
@@ -248,6 +247,16 @@ abstract class Model implements Jsonable
 	/**
 	 * Get the table associated with the model.
 	 *
+	 * @return string
+	 */
+	public function getEntity()
+	{
+		return self::catterEntityName();
+	}
+
+	/**
+	 * Get the table associated with the model.
+	 *
 	 * @param string $table
 	 * @return $this
 	 */
@@ -379,9 +388,20 @@ abstract class Model implements Jsonable
 	 */
 	protected static function catterTableName()
 	{
+		return Str::pluralize(static::catterEntityName());
+	}
+
+	/**
+	 * Catter the entity name from the class name.
+	 *
+	 * @static
+	 * @return string
+	 */
+	protected static function catterEntityName()
+	{
 		$names = explode('\\', get_called_class());
 		//
-		return Str::pluralize(Str::snake(array_pop($names)));
+		return Str::snake(array_pop($names));
 	}
 
 	/**
@@ -461,7 +481,7 @@ abstract class Model implements Jsonable
 	 * @param string $name
 	 * @return mixed
 	 */
-	public static function getAttribute(string $name)
+	public function getAttribute(string $name)
 	{
 		if ($this->hasAttributeGetter($name)) {
 			return $this->callAttributeGetter($name);
@@ -765,6 +785,12 @@ abstract class Model implements Jsonable
 	 */
 	public function __get($name)
 	{
+		// Let's check if there is a defined method on such name.
+		// If yes, let's call it and return its call result.
+		if (method_exists($this, $name)) {
+			return call_user_func_array([$this, $name], []);
+		}
+		//
 		return $this->getAttribute($name);
 	}
 
@@ -812,7 +838,13 @@ abstract class Model implements Jsonable
 			$result[$id_name] = null;
 		}
 		//
-		$result = array_merge($result, $this->attributes);
+		$result = array_merge(
+			$result,
+			$this->attributes, 
+			$this->belongsToRelationsCache,
+			$this->belongsToManyRelationsCache,
+			$this->hasManyRelationsCache
+		);
 		//
 		return $result;
 	}
@@ -1135,15 +1167,8 @@ abstract class Model implements Jsonable
 		$query = Builder::new()->from(static::askTableName())->select('*');
 		//
 		foreach ($orderBy as $ord) {
-			$elements = '';
-			//
-			if (
-				preg_match('/^(\s*(\w+(\.\w+)*)\s+(asc|desc)\s*)$/i', $ord, $elements)
-			) {
-				$query->orderBy(
-					$elements[2],
-					strtolower($elements[4] ?? '') == 'desc'
-				);
+			if ($this->validateOrderByItem($ord, $field, $direction)) {
+				$query->orderBy($field, strtolower($direction) == 'desc');
 			}
 		}
 		//
@@ -1180,18 +1205,12 @@ abstract class Model implements Jsonable
 					->pageSize($rowsPerPage);
 		//
 		foreach ($orderBy as $ord) {
-			$elements = '';
-			//
-			if (
-				preg_match('/^(\\w+(\\.\\w+)*)\\s+(asc|desc)$/i', $ord, $elements)
-			) {
-				$query->orderBy(
-					$elements[1], strtolower($elements[3] ?? '') == 'desc'
-				);
+			if ($this->validateOrderByItem($ord, $field, $direction)) {
+				$query->orderBy($field, strtolower($direction) == 'desc');
 			}
 		}
 		//
-		$query = $query->gather();
+		$query = $query->execute();
 		//
 		if (!is_null($query)) {
 			return self::fillModelList($query, static::class);
@@ -1210,7 +1229,7 @@ abstract class Model implements Jsonable
 	 */
 	public static function where($left = null, $middle = null, $right = null)
 	{
-		if ($left ?? $middle ?? $right) {
+		if ($right ?? $middle ?? $left ?? false) {
 			return $this->getBuilder()->where($left, $middle, $right);
 		}
 		//
@@ -1316,112 +1335,123 @@ abstract class Model implements Jsonable
 
 
 
-
-
-
-
 	/**
 	 *	Returns a ModelResult collection of all child Models related to the current Model
 	 *
-	 *	@param	mixed	$relatedModelClass
+	 *	@param	mixed	$related
 	 *	@param	string	$foreignKey
 	 *	@param	string	$localKey
 	 *	@return	\Asta\Database\Repository\Model[]
 	 */
 	public function hasMany(
-		$relatedModelClass, string $foreignKey = null, string $localKey = null
+		$related, string $foreignKey = null, string $localKey = null
 	) {
-		if (!is_subclass_of($relatedModelClass, Model::class)) {
+		$caller = debug_backtrace(2,2)[1]['function'];
+		//
+		if (!is_subclass_of($related, Model::class)) {
 			throw new InvalidArgumentException(
-				$relatedModelClass . ' is not a subclass of ' . Model::class . '.'
+				$related . ' is not a subclass of ' . Model::class . '.'
 			);
 		}
 		//
-		if (!isset($this->hasManyRelationsCache[$relatedModelClass])) {
-			$oneToMany = new OneToMany(
-				$this, new $relatedModelClass, $foreignKey, $localKey
-			);
-			//
-			$results = $oneToMany->fetch();
-			//
-			$this->hasManyRelationsCache[$relatedModelClass] =
-				static::fillModelList($results, $relatedModelClass);
+		if (isset($this->hasManyRelationsCache[$caller])) {
+			return $this->hasManyRelationsCache[$caller];
 		}
 		//
-		return $this->hasManyRelationsCache[$relatedModelClass];
+		$oneToMany = new OneToMany($this, new $related, $foreignKey, $localKey);
+		//
+		return $this->hasManyRelationsCache[$caller] = static::fillModelList(
+			$results = $oneToMany->fetch(), $related
+		);
 	}
 
 	/**
 	 *	Returns the parent Model related to the current Model
 	 *
-	 *	@param	mixed	$relatedModelClass
-	 *	@param	string	$localForeign
+	 *	@param	mixed	$related
+	 *	@param	string	$foreignKey
+	 *	@param	string	$localKey
 	 *	@return	\Asta\Database\Repository\Model
 	 */
-	public function belongsTo($relatedModelClass, string $localForeign = null)
-	{
-		if (!is_subclass_of($relatedModelClass, Model::class)) {
+	public function belongsTo(
+		$related, string $foreignKey = null, string $localKey = null
+	) {
+		$caller = debug_backtrace(2,2)[1]['function'];
+		//
+		if (!is_subclass_of($related, Model::class)) {
 			throw new InvalidArgumentException(
-				$relatedModelClass . ' is not a subclass of ' . Model::class . '.'
+				$related . ' is not a subclass of ' . Model::class . '.'
 			);
 		}
 		//
-		if (!isset($this->belongsToRelationsCache[$relatedModelClass])) {
-			$localForeign = $localForeign ?? ((new $relatedModelClass)->getEntity() . '_id');
-			$localForeign = Str::toCamel($localForeign);
-			$localForeignId = $this->$localForeign;
-			//
-			$this->belongsToRelationsCache[$relatedModelClass] =
-				$relatedModelClass::fromId($localForeignId);
+		if (!empty($this->belongsToRelationsCache[$caller])) {
+			return $this->belongsToRelationsCache[$caller];
 		}
 		//
-		return $this->belongsToRelationsCache[$relatedModelClass];
+		$belongsTo = new BelongsTo($this, new $related, $foreignKey, $localKey);
+		//
+		return $this->belongsToRelationsCache[$caller] = $related::fromRow(
+			$results = $belongsTo->fetch()
+		);
 	}
 
 	/**
 	 *	Returns a ModelResult collection of all parent/brother Models related to the current Model
 	 *
-	 *	@param	mixed	$relatedModelClass
+	 *	@param	mixed	$related
 	 *	@param	string	$intermediate
 	 *	@param	string	$foreign
 	 *	@param	string	$foreignFar
 	 *	@return	\Asta\Database\Repository\Model[]
 	 */
 	public function belongsToMany(
-		$relatedModelClass,
+		$related,
 		string $intermediate = null,
 		string $foreign = null,
 		string $foreignFar = null
 	) {
-		if (!is_subclass_of($relatedModelClass, Model::class)) {
+		$caller = debug_backtrace(2,2)[1]['function'];
+		//
+		if (!is_subclass_of($related, Model::class)) {
 			throw new InvalidArgumentException(
-				$relatedModelClass . ' is not a subclass of ' . Model::class . '.'
+				$related . ' is not a subclass of ' . Model::class . '.'
 			);
 		}
 		//
-		if (
-			!isset($this->belongsToManyRelationsCache[$relatedModelClass])
-		) {
-			$manyToMany = new ManyToMany(
-				$this,
-				new $relatedModelClass(),
-				$intermediate,
-				$foreign,
-				$foreignFar
-			);
-			//
-			$this->belongsToManyRelationsCache[$relatedModelClass] = 
-				static::fillModelList(
-					$manyToMany->fetch(), $relatedModelClass
-				);
+		if (! empty($this->belongsToManyRelationsCache[$caller])) {
+			return $this->belongsToManyRelationsCache[$caller];
 		}
 		//
-		return $this->belongsToManyRelationsCache[$relatedModelClass];
+		$manyToMany = new ManyToMany(
+			$this, new $related(), $intermediate, $foreign, $foreignFar
+		);
+		//
+		return $this->belongsToManyRelationsCache[$related] = static::fillModelList(
+			$manyToMany->fetch(), $related
+		);
 	}
 
+	/**
+	 *	Returns the model data as Json format.
+	 *
+	 *	@param	int	$options = 0
+	 *	@return	string
+	 */
 	public function toJson($options = 0)
 	{
 		return json_encode($this);
+	}
+
+	/**
+	 *	Returns if the ORDER BY clause item is accepted by the current
+	 *	database driver.
+	 *
+	 *	@param	string	$clauseItem
+	 *	@return	bool
+	 */
+	public function validateOrderByItem(string $clauseItem)
+	{
+		return $this->getConnection()->getGrammar()->isValidOrderByItem($clauseItem);
 	}
 
 

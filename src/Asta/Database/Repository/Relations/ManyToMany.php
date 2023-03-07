@@ -1,14 +1,12 @@
 <?php
-namespace Collei\Database\Relations;
+namespace Asta\Database\Repository\Relations;
 
-use Collei\Database\Yanfei\Model;
-use Collei\Database\Query\DB;
-use Collei\Database\Relations\Relation;
-use Collei\Support\Collections\Collection;
-use Collei\Support\Arr;
+use Asta\Database\Repository\Model;
+use Asta\Database\Query\Builder;
+use Jeht\Support\Arr;
 
 /**
- *	Embodies many-to-many relations
+ *	Embodies many-to-many relation.
  *
  *	@author alarido <alarido.su@gmail.com>
  *	@since 2021-07-xx
@@ -29,22 +27,27 @@ class ManyToMany extends Relation
 	 */
 	protected function inferKeys(string $left = null, string $right = null)
 	{
-		$this->leftKey = $left ?? $this->left->getEntity() . '_id';
-		$this->rightKey = $right ?? $this->right->getEntity() . '_id';
+		$this->leftKey = $left ?? $this->left->getTable() . '_id';
+		$this->rightKey = $right ?? $this->right->getTable() . '_id';
 	}
 
 	/**
 	 *	Builds and instantiates
 	 *
-	 *	@param	\Collei\Database\Yanfei\Model	$near
-	 *	@param	\Collei\Database\Yanfei\Model	$far
+	 *	@param	\Asta\Database\Repository\Model	$near
+	 *	@param	\Asta\Database\Repository\Model	$far
 	 *	@param	string	$middle
 	 *	@param	string	$foreignNearKey	foreign key in left table pointing to the right table
 	 *	@param	string	$foreignFarKey	foreign key in right table pointing to the left table
 	 *	@return	void
 	 */
-	public function __construct(Model $near, Model $far, string $middle = null, string $foreignNearKey = null, string $foreignFarKey = null)
-	{
+	public function __construct(
+		Model $near,
+		Model $far,
+		string $middle = null,
+		string $foreignNearKey = null,
+		string $foreignFarKey = null
+	) {
 		$this->left = $near;
 		$this->right = $far;
 		$this->associative = $middle;
@@ -75,11 +78,11 @@ class ManyToMany extends Relation
 
 		$farSetFields = $farSet . '.*'; // roles.*
 
-		return DB::from($farSet) //
+		return $this->getBuilder()->from($farSet) //
 					->select($farSetFields) // 
-					->join($interSet)->on($interKeyFar, $farKey) // // //
-					->where()->is($interKeyNear, $nearId) // //
-					->gather();
+					->join($interSet, $interKeyFar, '=', $farKey)
+					->where($interKeyNear, '=', $nearId)
+					->execute();
 	}
 	
 }
