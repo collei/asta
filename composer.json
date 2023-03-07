@@ -1,6 +1,6 @@
 {
 	"name": "collei/asta",
-	"description": "Query tools for any PHP project, backed by Doctrine DBAL.",
+	"description": "Simple query and model mapping tools for any PHP project.",
 	"keywords": [
 		"asta",
 		"php",

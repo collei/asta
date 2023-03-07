@@ -417,6 +417,118 @@ class Grammar implements GrammarInterface
 			. $this->getTrailingSpace();
 	}
 
+	/**
+	 * Compiles the given parameters into a sql insert into values instruction.
+	 *
+	 * @param	string	$table
+	 * @param	array	$columns
+	 * @param	array	$values
+	 * @return	string
+	 */
+	public function compileInsertValues(string $table, array $columns, array $values)
+	{
+		return 'INSERT INTO  ' . $table
+			. $this->wrapItInParenthesis(implode(', ', $columns))
+			. ' VALUES '
+			. $this->wrapItInParenthesis(implode(', ', $values))
+			. ';';
+	}
+
+	/**
+	 * Compiles the given parameters into a sql select instruction.
+	 *
+	 * @param	string	$destination
+	 * @param	array	$destinationColumns
+	 * @param	array	$sourceColumns
+	 * @param	string	$source
+	 * @param	array	$joins = []
+	 * @param	bool	$distinct = false
+	 * @return	string
+	 */
+	public function compileInsertSelect(
+		string $destination,
+		array $destinationColumns
+		array $sourceColumns,
+		string $source,
+		array $joins = [],
+		bool $distinct = false
+	) {
+		return 'INSERT INTO  ' . $destination
+			. $this->wrapItInParenthesis(implode(', ', $destinationColumns))
+			. ' SELECT ' . ($distinct ? 'DISTINCT ' : '')
+			. implode(', ', $sourceColumns)
+			. ' FROM ' . trim($source)
+			. (empty($joins) ? '' : (' ' . implode(' ', $joins)))
+			. $this->getTrailingSpace();
+	}
+
+	/**
+	 * Compiles the given parameters into a leading Update header.
+	 *
+	 * @param	string	$target
+	 * @param	array	$expressions
+	 * @return	string
+	 */
+	public function compileUpdate(
+		string $target,
+		array $expressions
+	) {
+		return 'UPDATE  ' . $target
+			. ' SET ' . $this->compileUpdateExpressions($targetExpressions)
+			. $this->getTrailingSpace();
+	}
+
+	/**
+	 * Compiles the given parameters into a leading Update Join header.
+	 *
+	 * @param	string	$target
+	 * @param	array	$expressions
+	 * @param	string	$fromTable
+	 * @param	array	$compiledJoins = []
+	 * @return	string
+	 */
+	public function compileUpdateJoin(
+		string $target,
+		array $expressions,
+		string $fromTable,
+		array $compiledJoins = []
+	) {
+		return 'UPDATE  ' . $target
+			. ' SET ' . $this->compileUpdateExpressions($targetExpressions)
+			. ' FROM ' . $fromTable
+			. ' ' . implode(' ', $compiledJoins)
+			. $this->getTrailingSpace();
+	}
+
+	/**
+	 * Compiles the given parameters into a leading Delete header.
+	 *
+	 * @param	string	$target
+	 * @return	string
+	 */
+	public function compileDelete(
+		string $target
+	) {
+		return 'DELETE FROM  ' . $target
+			. $this->getTrailingSpace();
+	}
+
+	/**
+	 * Compiles the given parameters into a leading Delete Join header.
+	 *
+	 * @param	string	$target
+	 * @param	array	$compiledJoins = []
+	 * @return	string
+	 */
+	public function compileDeleteJoin(
+		string $target,
+		array $compiledJoins = []
+	) {
+		return 'DELETE FROM ' . $target
+			. ' ' . implode(' ', $compiledJoins)
+			. $this->getTrailingSpace();
+	}
+
 }
 
 
