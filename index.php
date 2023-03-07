@@ -84,10 +84,10 @@ $subquery = Builder::new()->from('attendants', 'a')
 	->orWhere('name','like',"%{$client_supplied_flithy_data}%");
 
 $subwhere = Builder::new()->fromSub(function($query){
-		$query->from('names')->whereIn('origin', ['JP','EU','HB','AR']);
+		$query->from('names')->whereIn('origin', ['JP','E"ú','HB','AR']);
 	}, 'allowed_names')
 	->select('name')
-	->where('language', 'in', ['en-us','pt-br','jp-jp'])
+	->whereIn('language', ['en-us','pt-br','jp-jp'])
 	->orWhere('fosters', Builder::raw('homes.city'));
 
 $querist = Builder::new()->from('clients', 'c')
@@ -102,7 +102,7 @@ $querist = Builder::new()->from('clients', 'c')
 		$query->select('count(*)')->from('customers', 'u')
 			->join('cities','u.id_city','=','cities.id')
 			->where('name', 'in', $subwhere)
-			->where('city', 'r.id_city');
+			->whereColumn('city', 'r.id_city');
 	}, 'countings')->where('r.item_count','>',10)->skip(10)->take(20);
 
 $sql = '' . $querist . '';

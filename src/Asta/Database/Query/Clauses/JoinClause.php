@@ -2,6 +2,7 @@
 namespace Asta\Database\Query\Clauses;
 
 use Asta\Database\Query\Builder;
+use Asta\Database\Query\Expression;
 use Closure;
 
 /**
@@ -44,7 +45,11 @@ class JoinClause extends Builder
 
 	public function on($column, $operator = null, $second = null, $boolean = 'and')
 	{
-		$this->where($column, $operator, $second, $boolean);
+		if (is_null($second)) {
+			list($operator, $second) = array('=', $operator);
+		}
+		//
+		$this->where($column, $operator, new Expression($second), $boolean);
 		//
 		return $this;
 	}

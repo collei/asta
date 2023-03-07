@@ -38,7 +38,12 @@ class Grammar implements GrammarInterface
 
 	public const REGEX_FIELDSPEC_SELECT = '^(((`[[^`]+]`|\[[^\]]+\]|[A-Za-z_]\w*)\.)*(`[[^`]+]`|\[[^\]]+\]|[A-Za-z_]\w*))(\s+as\s+(`[[^`]+]`|\[[^\]]+\]|[A-Za-z_]\w*))?$';
 	public const REGEX_FIELDSPEC_WHERE = '^(((`[[^`]+]`|\[[^\]]+\]|[A-Za-z_]\w*)\.)+)?(`[[^`]+]`|\[[^\]]+\]|[A-Za-z_]\w*)$';
-	
+
+	public function isValidColumnName(string $column)
+	{
+		return 1 === preg_match('#' . static::REGEX_FIELDSPEC_WHERE . '#i', $column);
+	}
+
 	public function getRegexFieldspecSelect()
 	{
 		return ('#' . self::REGEX_FIELDSPEC_SELECT . '#i');
@@ -151,6 +156,26 @@ class Grammar implements GrammarInterface
 	{
 		return $this->getLeadingSpace()
 			. "({$first} {$operator} {$last})"
+			. $this->getTrailingSpace();
+	}
+
+	public function compileInExpression($column, array $listing, bool $not = false)
+	{
+		$in = $not ? 'NOT IN' : 'IN';
+		//
+		return $this->getLeadingSpace()
+			. "({$column} {$in} (".implode(', ', $listing)."))"
+			. $this->getTrailingSpace();
+	}
+
+	public function compileBetweenExpression($column, array $pair, bool $not = false)
+	{
+		list($lower, $higher) = $pair;
+		//
+		$between = $not ? 'NOT BETWEEN' : 'BETWEEN';
+		// 
+		return $this->getLeadingSpace()
+			. "({$column} {$between} {$lower} AND {$higher})"
 			. $this->getTrailingSpace();
 	}
 

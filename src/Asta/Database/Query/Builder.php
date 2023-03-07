@@ -10,6 +10,7 @@ use Asta\Database\Query\Clauses\JoinClause;
 
 use Closure;
 use Stringable;
+use InvalidArgumentException;
 
 /**
  *	The query builder, fully naïve mode (never checks for real existence
@@ -297,6 +298,18 @@ class Builder
 	}
 
 	/**
+	 * Tells if $column is a valid SQL column for to be on where clauses
+	 * in place of a value literal.
+	 *
+	 * @param string $column
+	 * @return bool
+	 */
+	protected function isValidSqlColumn(string $column)
+	{
+		return $this->getConnection()->getGrammar()->isValidColumnName($column);
+	}
+
+	/**
 	 **/
 
 	protected function isQueryable($query)
@@ -328,9 +341,11 @@ class Builder
 	{
 		if (is_array($value)) {
 			$passed = [];
+			//
 			foreach ($value as $subvalue) {
 				$passed[] = $this->prepareValue($subvalue);
 			}
+			//
 			return $this->getGrammar()->wrapItInParenthesis(implode(',', $passed));
 		}
 		//
@@ -344,10 +359,6 @@ class Builder
 		//
 		if (preg_match('#^(\:n\d+\:)$#i', $value, $found)) {
 			return $this->retrieveBound($found[1]);
-		}
-		//
-		if (preg_match($this->getGrammar()->getRegexFieldspecWhere(), $value)) {
-			return $value;
 		}
 		//
 		return $this->castValueToSqlLiteral($value);
@@ -562,21 +573,6 @@ class Builder
 		return $this;
 	}
 
-	public function whereNull($column)
-	{
-		return $this->where($column, 'is', 'null');
-	}
-
-	public function andWhereNull($column)
-	{
-		return $this->where($column, 'is', 'null', 'and');
-	}
-
-	public function orWhereNull($column)
-	{
-		return $this->where($column, 'is', 'null', 'or');
-	}
-
 	public function andWhere($column, $operator = null, $value = null)
 	{
 		return $this->where($column, $operator, $value, 'and');
@@ -585,6 +581,26 @@ class Builder
 	public function orWhere($column, $operator = null, $value = null)
 	{
 		return $this->where($column, $operator, $value, 'or');
+	}
+
+	public function whereColumn($column, $operator = null, $value = null, $boolean = 'and')
+	{
+		if (is_null($value)) {
+			list($operator, $value) = array('=', $operator);
+		}
+		//
+		if (! $this->isValidSqlColumn($value)) {
+			throw new InvalidArgumentException(
+				sprintf('Invalid SQL column: %s.', $value)
+			);
+		}
+		//
+		return $this->where($column, $operator, new Expression($value), $boolean);
+	}
+
+	public function orWhereColumn($column, $operator = null, $value = null)
+	{
+		return $this->whereColumn($column, $operator, $value, 'or');
 	}
 
 	public function whereIn($column, $values)
@@ -596,6 +612,138 @@ class Builder
 	{
 		return $this->where($column, 'IN', $values, 'or');
 	}
+
+	public function whereNotIn($column, $values)
+	{
+		return $this->where($column, 'NOT IN', $values, 'and');
+	}
+
+	public function orWhereNotIn($column, $values)
+	{
+		return $this->where($column, 'NOT IN', $values, 'or');
+	}
+
+	public function whereNull($column)
+	{
+		return $this->where($column, 'IS', 'NULL');
+	}
+
+	public function orWhereNull($column)
+	{
+		return $this->where($column, 'IS', 'NULL', 'OR');
+	}
+
+	public function whereNotNull($column)
+	{
+		return $this->where($column, 'IS NOT', 'NULL');
+	}
+
+	public function orWhereNotNull($column)
+	{
+		return $this->where($column, 'IS NOT', 'NULL', 'OR');
+	}
+
+	public function whereBetween($column, array $between)
+	{
+		if (count($between) < 2) {
+			throw new InvalidArgumentException('Array must have two values !');
+		}
+		//
+		return $this->where($column, 'BETWEEN', $between, 'and');
+	}
+
+	public function orWhereBetween($column, array $between)
+	{
+		if (count($between) < 2) {
+			throw new InvalidArgumentException('Array must have two values !');
+		}
+		//
+		return $this->where($column, 'BETWEEN', $between, 'or');
+	}
+
+	public function whereNotBetween($column, array $between)
+	{
+		if (count($between) < 2) {
+			throw new InvalidArgumentException('Array must have two values !');
+		}
+		//
+		return $this->where($column, 'NOT BETWEEN', $between, 'and');
+	}
+
+	public function orWhereNotBetween($column, array $between)
+	{
+		if (count($between) < 2) {
+			throw new InvalidArgumentException('Array must have two values !');
+		}
+		//
+		return $this->where($column, 'NOT BETWEEN', $between, 'or');
+	}
+
+	public function whereBetweenColumns($column, array $between)
+	{
+		if (count($between) < 2) {
+			throw new InvalidArgumentException('Array must have two values !');
+		}
+		//
+		if (! $this->isValidSqlColumn($between[0]) || ! $this->isValidSqlColumn($between[1])) {
+			throw new InvalidArgumentException('Both values must be valid SQL column names !');
+		}
+		//
+		$between = new Expression($between[0] . ' AND ' . $between[1]);
+		//
+		return $this->where($column, 'BETWEEN', $between, 'and');
+	}
+
+	public function orWhereBetweenColumns($column, array $between)
+	{
+		if (count($between) < 2) {
+			throw new InvalidArgumentException('Array must have two values !');
+		}
+		//
+		if (! $this->isValidSqlColumn($between[0]) || ! $this->isValidSqlColumn($between[1])) {
+			throw new InvalidArgumentException('Both values must be valid SQL column names !');
+		}
+		//
+		$between = new Expression($between[0] . ' AND ' . $between[1]);
+		//
+		return $this->where($column, 'BETWEEN', $between, 'or');
+	}
+
+	public function whereNotBetweenColumns($column, array $between)
+	{
+		if (count($between) < 2) {
+			throw new InvalidArgumentException('Array must have two values !');
+		}
+		//
+		if (! $this->isValidSqlColumn($between[0]) || ! $this->isValidSqlColumn($between[1])) {
+			throw new InvalidArgumentException('Both values must be valid SQL column names !');
+		}
+		//
+		$between = new Expression($between[0] . ' AND ' . $between[1]);
+		//
+		return $this->where($column, 'NOT BETWEEN', $between, 'and');
+	}
+
+	public function orWhereNotBetweenColumns($column, array $between)
+	{
+		if (count($between) < 2) {
+			throw new InvalidArgumentException('Array must have two values !');
+		}
+		//
+		if (! $this->isValidSqlColumn($between[0]) || ! $this->isValidSqlColumn($between[1])) {
+			throw new InvalidArgumentException('Both values must be valid SQL column names !');
+		}
+		//
+		$between = new Expression($between[0] . ' AND ' . $between[1]);
+		//
+		return $this->where($column, 'NOT BETWEEN', $between, 'or');
+	}
+
+
+
+
+
+
 
 	public function limit(int $count)
 	{
@@ -638,9 +786,23 @@ class Builder
 					$this->prepareValue($item[3])
 				);
 				//
-				$chain[] = $this->getGrammar()->compileExpression(
-					$item[1], $item[2], $item[3]
-				);
+				switch (strtoupper($item[2])) {
+					case 'BETWEEN':
+						$chain[] = $this->getGrammar()->compileBetweenExpression(
+							$item[1], $item[2], false
+						);
+						break;
+					case 'NOT BETWEEN':
+						$chain[] = $this->getGrammar()->compileBetweenExpression(
+							$item[1], $item[2], true
+						);
+						break;
+					default:
+						$chain[] = $this->getGrammar()->compileExpression(
+							$item[1], $item[2], $item[3]
+						);
+				}
+				//
 			} elseif ($type=='nested') {
 				$chain[] = $this->getGrammar()->compileExists(
 					$item[1]->toSql()
