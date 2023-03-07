@@ -26,12 +26,12 @@ class Grammar implements GrammarInterface
 	/**
 	 * @var bool
 	 */
-	public const REGEX_FIELDSPEC_SELECT = '^(((`[[^`]+]`|\[[^\]]+\]|[A-Za-z_]\w*)\.)*(`[[^`]+]`|\[[^\]]+\]|[A-Za-z_]\w*))(\s+as\s+(`[[^`]+]`|\[[^\]]+\]|[A-Za-z_]\w*))?$';
+	public const REGEX_FIELDSPEC_SIMPLE = '^(((`[[^`]+]`|\[[^\]]+\]|[A-Za-z_]\w*)\.)+)?(`[[^`]+]`|\[[^\]]+\]|[A-Za-z_]\w*)$';
 
 	/**
 	 * @var bool
 	 */
-	public const REGEX_FIELDSPEC_WHERE = '^(((`[[^`]+]`|\[[^\]]+\]|[A-Za-z_]\w*)\.)+)?(`[[^`]+]`|\[[^\]]+\]|[A-Za-z_]\w*)$';
+	public const REGEX_FIELDSPEC_ALIASED = '^(((`[[^`]+]`|\[[^\]]+\]|[A-Za-z_]\w*)\.)*(`[[^`]+]`|\[[^\]]+\]|[A-Za-z_]\w*))(\s+as\s+(`[[^`]+]`|\[[^\]]+\]|[A-Za-z_]\w*))?$';
 
 	/**
 	 * @var bool
@@ -91,7 +91,32 @@ class Grammar implements GrammarInterface
 	 */
 	public function isValidColumnName(string $column)
 	{
-		return 1 === preg_match('#' . static::REGEX_FIELDSPEC_WHERE . '#i', $column);
+		return 1 === preg_match(
+			'#'.static::REGEX_FIELDSPEC_SIMPLE.'#i', $column
+		);
+	}
+
+	/**
+	 * Returns whether $column is a valid SQL ORDER BY clause item.
+	 *
+	 * @param	string	$column
+	 * @param	string	&$field = null
+	 * @param	string	&$ord = null
+	 * @return	bool
+	 */
+	public function isValidAliasedColumnName(
+		string $column, string &$field = null, string &$alias = null
+	) {
+		$result = 1 === preg_match(
+			'#'.static::REGEX_FIELDSPEC_ALIASED.'#i', $column, $matches
+		);
+		//
+		if ($result) {
+			$field = $matches[1];
+			$alias = $matches[6];
+		}
+		//
+		return $result;
 	}
 
 	/**
@@ -124,7 +149,7 @@ class Grammar implements GrammarInterface
 	 */
 	public function getRegexFieldspecSelect()
 	{
-		return ('#'.self::REGEX_FIELDSPEC_SELECT.'#i');
+		return ('#'.self::REGEX_FIELDSPEC_ALIASED.'#i');
 	}
 
 	/**
@@ -134,7 +159,7 @@ class Grammar implements GrammarInterface
 	 */
 	public function getRegexFieldspecWhere()
 	{
-		return ('#'.self::REGEX_FIELDSPEC_WHERE.'#i');
+		return ('#'.self::REGEX_FIELDSPEC_SIMPLE.'#i');
 	}
 
 	/**
@@ -392,6 +417,45 @@ class Grammar implements GrammarInterface
 	}
 
 	/**
+	 * Compiles the ORDER BY clause.
+	 *
+	 * @param	array	$orderList
+	 * @return	string
+	 */
+	public function compileOrderByClause(array $orderList)
+	{
+		$orders = [];
+		//
+		foreach ($orderList as $key => $value) {
+			$orders[] = $this->compileOrderByItem($key, $value);
+		}
+		//
+		return $this->getLeadingSpace()
+			. 'ORDER BY ' . implode(', ', $orders)
+			. $this->getTrailingSpace();
+	}
+
+	/**
+	 * Compiles a single item for the ORDER BY clause.
+	 *
+	 * @param	string	$field
+	 * @param	string|bool	$direction
+	 * @return	string
+	 */
+	public function compileOrderByItem(string $field, $direction)
+	{
+		if (is_bool($direction)) {
+			$direction = $direction ? 'ASC' : 'DESC';
+		} else {
+			$direction = strcasecmp($direction, 'DESC') === 0
+				? 'DESC'
+				: 'ASC';
+		}
+		//
+		return sprintf('%s %s', $field, $direction); 
+	}
+
+	/**
 	 * Compiles the offset clause.
 	 *
 	 * @param	int		$offset
@@ -447,7 +511,7 @@ class Grammar implements GrammarInterface
 	 */
 	public function compileInsertSelect(
 		string $destination,
-		array $destinationColumns
+		array $destinationColumns,
 		array $sourceColumns,
 		string $source,
 		array $joins = [],

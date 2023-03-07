@@ -739,11 +739,12 @@ class Builder
 		return $this->where($column, 'NOT BETWEEN', $between, 'or');
 	}
 
-
-
-
-
-
+	public function orderBy(string $field, bool $asc = true)
+	{
+		$this->orders[$field] = $asc ? 'ASC' : 'DESC';
+		//
+		return $this;
+	}
 
 	public function limit(int $count)
 	{
@@ -870,12 +871,16 @@ class Builder
 			$sql .= $this->getGrammar()->compileWhereChain($whereChain);
 		}
 		//
-		if ($this->offset) {
-			$sql .= $this->getGrammar()->compileOffsetClause($this->limit);
-		}
-		//
-		if ($this->limit) {
-			$sql .= $this->getGrammar()->compileLimitClause($this->limit);
+		if (!empty($this->orders)) {
+			$sql .= $this->getGrammar()->compileOrderByClause($this->orders);
+			//
+			if ($this->offset) {
+				$sql .= $this->getGrammar()->compileOffsetClause($this->offset);
+			}
+			//
+			if ($this->limit) {
+				$sql .= $this->getGrammar()->compileLimitClause($this->limit);
+			}
 		}
 		//
 		return $sql;

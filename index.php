@@ -140,7 +140,7 @@ $querist = Builder::new()->from('clients', 'c')
 			->join('cities','u.id_city','=','cities.id')
 			->where('name', 'in', $subwhere)
 			->whereColumn('city', 'r.id_city');
-	}, 'countings')->where('r.item_count','>',10)->skip(10)->take(20);
+	}, 'countings')->where('r.item_count','>',10)->orderBy('c.name')->skip(10)->take(20);
 
 $sql = '' . $querist . '';
 
