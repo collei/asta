@@ -778,6 +778,16 @@ abstract class Model implements Jsonable
 	}
 
 	/**
+	 *	Returns if the specified attribute exists
+	 *
+	 *	@return	bool
+	 */
+	protected final function hasKeyAttribute()
+	{
+		return array_key_exists($this->getKey(), $this->attributes);
+	}
+
+	/**
 	 *	Retrieves attributes by name.
 	 *
 	 *	@param	string	$name
@@ -877,47 +887,80 @@ abstract class Model implements Jsonable
 	 */
 	protected static function performSave(Model $model)
 	{
-		$table = $model->getTable();
+		$data = static::retrieveAttributes($model);
 		//
+		if (!$model->isRecent() && $model->hasKeyAttribute()) {
+			return static::performUpdateOf($model, $data);
+		}
+		//
+		return static::performInsertOf($model, $data);
+	}
+
+	/**
+	 *	Prepares and retrieves attributes.
+	 *
+	 *	@param	\Asta\Database\Repository\Model	$model
+	 *	@return	array
+	 */
+	protected static function retrieveAttributes(Model $model)
+	{
 		$attributes = Arr::exceptKeys($model->attributes, [
-			$key = $model->getKey(),
-			$timeCreated = $model->getCreatedAt(),
-			$timeUpdated = $model->getUpdatedAt()
+			$model->getKey(),
+			$model->getCreatedAt(),
+			$model->getUpdatedAt()
 		]);
 		//
-		$data = Arr::rekey($attributes, function ($arrayKey) {
+		return Arr::rekey($attributes, function ($arrayKey) {
 			return Str::toSnake($arrayKey);
-		});
+		});		
+	}
+
+	/**
+	 *	Performs database update.
+	 *
+	 *	@param	\Asta\Database\Repository\Model	$model
+	 *	@param	array	$data
+	 *	@return	mixed
+	 */
+	protected static function performUpdateOf(Model $model, array $data)
+	{
+		$updater = $model->getConnection()->getUpdater($model->getTable());
 		//
-		if (!$model->isRecent() && $model->hasAttribute($key)) {
-			$updater = $this->getConnection()->getUpdater($table);
-			//
-			foreach ($data as $n => $v) {
-				$updater->set($n, $v);
-			}
-			//
-			if ($this->hasTimestamps()) {
-				$updater->set($timeUpdated, new DateTime());
-			}
-			//
-			return $updater
-					->where($key, '=', $model->$key)
-					->execute();
-		} else {
-			$inserter = $this->getConnection()->getInserter($table);
-			//
-			$inserter->fields($data);
-			//
-			if ($this->hasTimestamps()) {
-				$inserter->field($timeCreated, new DateTime());
-			}
-			//
-			$model->setAttribute(
-				$key, $inserter->execute()
-			);
-			//
-			return $model;
+		foreach ($data as $n => $v) {
+			$updater->set($n, $v);
 		}
+		//
+		if ($model->hasTimestamps()) {
+			$updater->set($model->getUpdatedAt(), new DateTime());
+		}
+		//
+		return $updater
+				->where($model->getKey(), '=', $model->$key)
+				->execute();
+	}
+
+	/**
+	 *	Performs database insert.
+	 *
+	 *	@param	\Asta\Database\Repository\Model	$model
+	 *	@param	array	$data
+	 *	@return	mixed
+	 */
+	protected static function performInsertOf(Model $model, array $data)
+	{
+		$inserter = $model->getConnection()->getInserter($model->getTable());
+		//
+		$inserter->fields($data);
+		//
+		if ($model->hasTimestamps()) {
+			$inserter->field($model->getCreatedAt(), new DateTime());
+		}
+		//
+		$model->setAttribute(
+			$model->getKey(), $inserter->execute()
+		);
+		//
+		return $model;
 	}
 
 	/**

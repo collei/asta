@@ -47,7 +47,13 @@ class MeanType extends Model
 {
 }
 
-
+/*
+$diona = new Contact();
+$diona->name = 'Diona';
+$diona->avatar = 'kaetzlein.gif';
+$diona->contactTypeId = 1;
+$diona->save();
+*/
 
 
 
@@ -88,6 +94,7 @@ function prettyPrintNestedParenthesis($text, bool $return = false)
 
 $client_supplied_flithy_data = "d' or 1=1 or ''='"; //%d\'--\r\n select * from usuarios ";
 
+/*
 $produtos = [
 	Contact::count(),
 	Contact::findById(32),
@@ -112,6 +119,7 @@ foreach ($produtos as $tranche) {
 		}
 	}
 }
+*/
 
 $subquery = Builder::new()->from('attendants', 'a')
 	->join('homes','homes.city','city')
@@ -144,13 +152,23 @@ $querist = Builder::new()->from('clients', 'c')
 
 $sql = '' . $querist . '';
 
-$builders = compact('produtos','subquery','subwhere','querist');
+$bindings = $querist->getBindings('where');
+
+//$builders = compact('produtos','subquery','subwhere','querist');
+$builders = compact('subquery','subwhere','querist');
 
 ?>
 <html>
 	<fieldset>
-		<legend>Generated SQL</legend>
-		<pre><?=(prettyPrintNestedParenthesis($sql))?></pre>
+		<legend>Generated SQL & Bindings</legend>
+		<fieldset>
+			<legend>SQL</legend>
+			<pre><?=(prettyPrintNestedParenthesis($sql))?></pre>
+		</fieldset>
+		<fieldset>
+			<legend>Bindings</legend>
+			<pre><?=(print_r($bindings,true))?></pre>
+		</fieldset>
 	</fieldset>
 	<fieldset>
 	<?php 

@@ -1,6 +1,9 @@
 <?php
 namespace Asta\Database\Query;
 
+use Asta\Database\Connections\Connection;
+use Asta\Database\Connections\ConnectionInterface;
+
 class InsertBuilder
 {
 	protected $connection;
@@ -55,7 +58,7 @@ class InsertBuilder
 	{
 		$this->data = [];
 		//
-		foreach ($fields as $key => $value) {
+		foreach ($fields as $field => $value) {
 			$this->data[$field] = $value;
 		}
 		//
@@ -233,13 +236,27 @@ class InsertBuilder
 
 	public function toSql()
 	{
-		$values = $this->hasSelect()
-			? $this->getSelect()->getSql()
-			: $this->getGrammar()->compileInsertValues($this->data);
+		if ($this->hasSelect()) {
+			return $this->getGrammar()->compileInsertSelect(
+				$this->table,
+				array_keys($this->data),
+				$this->getSelect()->getColumns(),
+				$this->getSelect()->getTable(),
+				$this->getSelect()->getJoins(),
+				$this->getSelect()->getDistinct()
+			);
+		}
 		//
-		$insert = $this->getGrammar()->compileInsertInto($this->table, array_keys($this->data));
-		//
-		return $insert . ' ' . $values;
+		return $this->getGrammar()->compileInsertValues(
+			$this->table,
+			array_keys($this->data),
+			array_values($this->data)
+		);
+	}
+
+	public function execute()
+	{
+		return $this->getConnection()->insertOne($this->toSql());
 	}
 
 }

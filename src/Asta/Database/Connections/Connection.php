@@ -9,8 +9,7 @@ use Throwable;
 use Closure;
 use DateTime;
 use InvalidArgumentException;
-use Asta\Database\Processors\ProcessorInterface;
-use Asta\Database\Processors\Processor;
+use Asta\Database\Query\Processors\Processor;
 use Asta\Database\Query\Grammars\Grammar;
 use Asta\Database\Query\Grammars\GrammarInterface;
 use Asta\Database\Query\Builder;
@@ -239,7 +238,7 @@ class Connection implements ConnectionInterface
 	 *	@param	\Asta\Database\Processors\ProcessorInterface	$processor
 	 *	@return	void
 	 */
-	public function setProcessor(Processor $processor)
+	public function setProcessor(ProcessorInterface $processor)
 	{
 		$this->processor = $processor;
 	}
@@ -326,7 +325,7 @@ class Connection implements ConnectionInterface
 	 *	@param	bool	$useNamedParams
 	 *	@return	mixed
 	 */
-	public function insertOne(string $query, array $row, bool $useNamedParams = false)
+	public function insertOne(string $query, array $row = [], bool $useNamedParams = false)
 	{
 		$results = 0;
 		//
@@ -759,11 +758,7 @@ class Connection implements ConnectionInterface
 						->getHandle()
 						->query($sql);
 			//
-			$array = $this->resultToArray($rowset);
-
-//echo '<fieldset><pre>'.print_r(compact('sql','rowset','array'),true).'</pre></fieldset>';
-
-			return $array;
+			return $this->resultToArray($rowset);
 		}  catch (Exception $ex) {
 			$this->processError($ex, $sql, __METHOD__ . ' » PDO::prepare(): ', []);
 		}
@@ -792,12 +787,16 @@ class Connection implements ConnectionInterface
 	 *	Executes insert query and returns last inserted id (may depends on the underlying db engine)
 	 *
 	 *	@param	string	$sql
-	 *	@param	array	$row
+	 *	@param	array	$data
 	 *	@param	bool	$usingNamedParameters
 	 *	@return	int
 	 */
-	protected function insertQuery(string $sql, array $row, bool $usingNamedParameters = false)
+	protected function insertQuery(string $sql, array $data, bool $usingNamedParameters = false)
 	{
+		if (empty($data)) {
+			return $this->executeInsertQuery($sql);
+		}
+		//
 		$stmt = null;
 
 		try
@@ -806,12 +805,12 @@ class Connection implements ConnectionInterface
 		}
 		catch (Exception $ex)
 		{
-			$this->processError($ex, $sql, __METHOD__ . ' » PDO::prepare(): ', $row);
+			$this->processError($ex, $sql, __METHOD__ . ' » PDO::prepare(): ', $data);
 		}
 
 		if ($usingNamedParameters)
 		{
-			foreach ($row as $n => $v)
+			foreach ($data as $n => $v)
 			{
 				$stmt->bindValue($n, $v);
 			}
@@ -819,7 +818,7 @@ class Connection implements ConnectionInterface
 		else
 		{
 			$i = 0;
-			foreach ($row as $n => $v)
+			foreach ($data as $n => $v)
 			{
 				$stmt->bindValue(++$i, $v);
 			}
@@ -829,6 +828,25 @@ class Connection implements ConnectionInterface
 		$last_id = $this->getHandle()->lastInsertId();
 
 		return $last_id;
+	}
+
+	/**
+	 *	Executes the raw insert query and returns the resulting id (if any)
+	 *
+	 *	@param	string	$sql
+	 *	@return	array
+	 */
+	protected function executeInsertQuery(string $sql)
+	{
+		try {
+			return $this->open()->useDatabase()
+						->getHandle()
+						->exec($sql);
+		}  catch (Exception $ex) {
+			$this->processError($ex, $sql, __METHOD__ . ' » PDO::prepare(): ');
+		}
+		//
+		return null;
 	}
 
 	/**

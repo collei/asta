@@ -208,10 +208,13 @@ class Grammar implements GrammarInterface
 		}
 		//
 		$precision = 1;
+		//
 		while (round($value, $precision) != $value) {
 			++$precision;
 			//
-			if ($precision > 15) { break; }
+			if ($precision > 15) {
+				break;
+			}
 		}
 		//
 		return $this->valueToSqlFloat($value, $precision);

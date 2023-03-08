@@ -40,7 +40,7 @@ class Builder
 	protected $columns;
 
 	/**
-	 * @var array
+	 * @var string
 	 */
 	protected $from;
 
@@ -144,16 +144,6 @@ class Builder
 	}
 
 	/**
-	 * Returns the Builder's processor
-	 *
-	 * @return Processor
-	 */
-	public function getProcessor()
-	{
-		return $this->connection->getProcessor();
-	}
-
-	/**
 	 * Adds columns to the select clause
 	 *
 	 * @param array $columns
@@ -170,6 +160,51 @@ class Builder
 		}
 	}
 
+	/**
+	 * Retrieves the current select columns.
+	 *
+	 * @return array
+	 */
+	protected function getColumns()
+	{
+		return $this->columns;
+	}
+
+	/**
+	 * Retrieves the current select table (from).
+	 *
+	 * @return string
+	 */
+	protected function getTable()
+	{
+		return $this->from;
+	}
+
+	/**
+	 * Retrieves the current select joins.
+	 *
+	 * @return array
+	 */
+	protected function getJoins()
+	{
+		return $this->joins;
+	}
+
+	/**
+	 * Retrieves the current state of $distinct.
+	 *
+	 * @return bool
+	 */
+	public function getDistinct()
+	{
+		return $this->distinct;
+	}
+
+	/**
+	 * Generate a counting alias for select field aliasing.
+	 *
+	 * @return string
+	 */
 	protected function generateAlias()
 	{
 		return ('A' . (++self::$aliasingCounter));
@@ -190,11 +225,23 @@ class Builder
 			);
 		}
 		//
-		$next = ':n' . (++self::$bindingCounter) . ':';
+		$next = ':n' . (++self::$bindingCounter) . 'n';
 		//
 		$this->bindings[$type][$next] = $value;
 		//
 		return $next;
+	}
+
+	/**
+	 * Merges bindings from outside.
+	 *
+	 * @param array $otherBindings
+	 * @param string $type = 'where'
+	 * @return void
+	 */
+	protected function mergeBindings(array $otherBindings, string $type = 'where')
+	{
+		$this->bindings[$type] = array_merge($this->bindings[$type], $otherBindings);
 	}
 
 	/**
@@ -204,7 +251,7 @@ class Builder
 	 * @param mixed $type = 'where'
 	 * @return void
 	 */
-	protected function importBindingsFromSubquery(self $query, $type = 'where')
+	protected function importBindingsFromSubquery(Builder $query, $type = 'where')
 	{
 		$type = $type ?? 'where';
 		//
@@ -214,9 +261,7 @@ class Builder
 			);
 		}
 		//
-		foreach ($query->getBindings($type) as $binder => $bound) {
-			$this->bindings[$type][$binder] = $bound;
-		}
+		$this->mergeBindings($query->getBindings($type), $type);
 	}
 
 	/**
@@ -263,7 +308,7 @@ class Builder
 	 * @param string $type = 'where'
 	 * @return array
 	 */
-	protected function getBindings(string $type = 'where')
+	public function getBindings(string $type = 'where')
 	{
 		if (!array_key_exists($type, $this->bindings)) {
 			throw new InvalidArgumentException(
@@ -315,7 +360,7 @@ class Builder
 	protected function isQueryable($query)
 	{
 		return ($query instanceof Closure)
-			|| ($query instanceof self);
+			|| ($query instanceof Builder);
 	}
 
 	protected function castValueToSqlLiteral($value, $alternative = null)
@@ -346,7 +391,7 @@ class Builder
 				$passed[] = $this->prepareValue($subvalue);
 			}
 			//
-			return $this->getGrammar()->wrapItInParenthesis(implode(',', $passed));
+			return $this->getGrammar()->wrapItInParenthesis(implode(',', $value));
 		}
 		//
 		if ($value instanceof Expression) {
@@ -354,11 +399,13 @@ class Builder
 		}
 		//
 		if ($value instanceof Builder) {
+			$this->importBindingsFromSubquery($value, 'where');
+			//
 			return $this->getGrammar()->wrapItInParenthesis($value->toSql());
 		}
 		//
-		if (preg_match('#^(\:n\d+\:)$#i', $value, $found)) {
-			return $this->retrieveBound($found[1]);
+		if (preg_match('#^\:n\d+n$#i', $value)) {
+			return $value;
 		}
 		//
 		return $this->castValueToSqlLiteral($value);
@@ -409,8 +456,13 @@ class Builder
 	public function selectSub($query, $as)
 	{
 		$callback = $query;
+		//
 		$callback($query = $this->forSubQuery());
+		//
+		$this->importBindingsFromSubquery($query, 'where');
+		//
 		$query = $query->toSql();
+		//
 		$this->columns[] = $this->getGrammar()->compileAliasing(
 			$this->getGrammar()->wrapItInParenthesis($query), $as
 		);
@@ -435,6 +487,8 @@ class Builder
 	{
 		$table($query = $this->forSubQuery());
 		//
+		$this->importBindingsFromSubquery($query, 'where');
+		//
 		$this->from = $this->getGrammar()->compileAliasing(
 			$this->getGrammar()->wrapItInParenthesis($query->toSql()), $as
 		);
@@ -446,10 +500,18 @@ class Builder
 		$table, $first,
 		$operator = null, $second = null, $type = 'inner', $where = false
 	) {
+		if (is_array($table) && current($table) instanceof Builder) {
+			$as = key($table);
+			//
+			$this->importBindingsFromSubquery($table[$as], 'where');
+		}
+		//
 		$join = JoinClause::make($this, $type, $table);
 		//
 		if ($first instanceof Closure) {
 			$first($join);
+			//
+			$this->importBindingsFromSubquery($join, 'where');
 		} else {
 			$method = $where ? 'where' : 'on';
 			$join->$method($first, $operator, $second);
@@ -526,18 +588,36 @@ class Builder
 	protected function addBasicWhere(
 		$column, $operator = null, $value = null, $boolean = 'and'
 	) {
-		$this->wheres[] = [
-			'basic',
-			$column,
-			$operator,
-			$this->addBinding($value, 'where'),
-			$boolean
-		];
+		if (is_array($value)) {
+			switch (strtoupper(trim($operator))) {
+				case 'IN':
+				case 'NOT IN':
+					$values = [];
+					foreach ($value as $piece) {
+						$values[] = $this->addBinding($piece, 'where');
+					}
+					$value = $values;
+					break;
+				case 'BETWEEN':
+				case 'NOT BETWEEN':
+					$value = [
+						$this->addBinding($value[0], 'where'),
+						$this->addBinding($value[1], 'where'),
+					];
+			}
+		} elseif ($value instanceof Builder) {
+			$this->importBindingsFromSubquery($value, 'where');
+			//
+			$value = new Expression($value->toSql());
+		} elseif (!is_object($value)) {
+			$value = $this->addBinding($value, 'where');
+		}
+		//
+		$this->wheres[] = ['basic', $column, $operator, $value, $boolean];
 	}
 
-	protected function addNestedWhere(
-		self $query, string $boolean
-	) {
+	protected function addNestedWhere(Builder $query, string $boolean)
+	{
 		$this->wheres[] = ['nested', $query->toSql(), null, null, $boolean];
 		//
 		$this->importBindingsFromSubquery($query, 'where');
@@ -550,7 +630,11 @@ class Builder
 		//
 		if (is_array($column)) {
 			foreach ($column as $name => $value) {
-				$this->addBasicWhere($name, '=', $value, $boolean);
+				if (is_int($name) && is_array($value) && count($value) >= 3) {
+					$this->addBasicWhere($value[0], $value[1], $value[2], $boolean);
+				} else {
+					$this->addBasicWhere($name, '=', $value, $boolean);
+				}
 			}
 			//
 			return $this;
@@ -605,42 +689,42 @@ class Builder
 
 	public function whereIn($column, $values)
 	{
-		return $this->where($column, 'IN', $values, 'and');
+		return $this->where($column, 'in', $values, 'and');
 	}
 
 	public function orWhereIn($column, $values)
 	{
-		return $this->where($column, 'IN', $values, 'or');
+		return $this->where($column, 'in', $values, 'or');
 	}
 
 	public function whereNotIn($column, $values)
 	{
-		return $this->where($column, 'NOT IN', $values, 'and');
+		return $this->where($column, 'not in', $values, 'and');
 	}
 
 	public function orWhereNotIn($column, $values)
 	{
-		return $this->where($column, 'NOT IN', $values, 'or');
+		return $this->where($column, 'not in', $values, 'or');
 	}
 
 	public function whereNull($column)
 	{
-		return $this->where($column, 'IS', 'NULL');
+		return $this->where($column, 'is', 'NULL');
 	}
 
 	public function orWhereNull($column)
 	{
-		return $this->where($column, 'IS', 'NULL', 'OR');
+		return $this->where($column, 'is', 'NULL', 'OR');
 	}
 
 	public function whereNotNull($column)
 	{
-		return $this->where($column, 'IS NOT', 'NULL');
+		return $this->where($column, 'is not', 'NULL');
 	}
 
 	public function orWhereNotNull($column)
 	{
-		return $this->where($column, 'IS NOT', 'NULL', 'OR');
+		return $this->where($column, 'is not', 'NULL', 'OR');
 	}
 
 	public function whereBetween($column, array $between)
@@ -649,7 +733,7 @@ class Builder
 			throw new InvalidArgumentException('Array must have two values !');
 		}
 		//
-		return $this->where($column, 'BETWEEN', $between, 'and');
+		return $this->where($column, 'between', $between, 'and');
 	}
 
 	public function orWhereBetween($column, array $between)
@@ -658,7 +742,7 @@ class Builder
 			throw new InvalidArgumentException('Array must have two values !');
 		}
 		//
-		return $this->where($column, 'BETWEEN', $between, 'or');
+		return $this->where($column, 'between', $between, 'or');
 	}
 
 	public function whereNotBetween($column, array $between)
@@ -667,7 +751,7 @@ class Builder
 			throw new InvalidArgumentException('Array must have two values !');
 		}
 		//
-		return $this->where($column, 'NOT BETWEEN', $between, 'and');
+		return $this->where($column, 'not between', $between, 'and');
 	}
 
 	public function orWhereNotBetween($column, array $between)
@@ -676,7 +760,7 @@ class Builder
 			throw new InvalidArgumentException('Array must have two values !');
 		}
 		//
-		return $this->where($column, 'NOT BETWEEN', $between, 'or');
+		return $this->where($column, 'not between', $between, 'or');
 	}
 
 	public function whereBetweenColumns($column, array $between)
@@ -691,7 +775,7 @@ class Builder
 		//
 		$between = new Expression($between[0] . ' AND ' . $between[1]);
 		//
-		return $this->where($column, 'BETWEEN', $between, 'and');
+		return $this->where($column, 'between', $between, 'and');
 	}
 
 	public function orWhereBetweenColumns($column, array $between)
@@ -706,7 +790,7 @@ class Builder
 		//
 		$between = new Expression($between[0] . ' AND ' . $between[1]);
 		//
-		return $this->where($column, 'BETWEEN', $between, 'or');
+		return $this->where($column, 'between', $between, 'or');
 	}
 
 	public function whereNotBetweenColumns($column, array $between)
@@ -721,7 +805,7 @@ class Builder
 		//
 		$between = new Expression($between[0] . ' AND ' . $between[1]);
 		//
-		return $this->where($column, 'NOT BETWEEN', $between, 'and');
+		return $this->where($column, 'not between', $between, 'and');
 	}
 
 	public function orWhereNotBetweenColumns($column, array $between)
@@ -736,7 +820,7 @@ class Builder
 		//
 		$between = new Expression($between[0] . ' AND ' . $between[1]);
 		//
-		return $this->where($column, 'NOT BETWEEN', $between, 'or');
+		return $this->where($column, 'not between', $between, 'or');
 	}
 
 	public function orderBy(string $field, bool $asc = true)
@@ -783,24 +867,28 @@ class Builder
 			$type = $item[0];
 			//
 			if ($type=='basic') {
-				$item[3] = $this->prepareValue(
-					$this->prepareValue($item[3])
-				);
+				$item[3] = $this->prepareValue($item[3]);
 				//
 				switch (strtoupper($item[2])) {
 					case 'BETWEEN':
 						$chain[] = $this->getGrammar()->compileBetweenExpression(
-							$item[1], $item[2], false
+							$item[1],
+							$item[3],
+							false
 						);
 						break;
 					case 'NOT BETWEEN':
 						$chain[] = $this->getGrammar()->compileBetweenExpression(
-							$item[1], $item[2], true
+							$item[1],
+							$item[3],
+							true
 						);
 						break;
 					default:
 						$chain[] = $this->getGrammar()->compileExpression(
-							$item[1], $item[2], $item[3]
+							$item[1],
+							$item[2],
+							$item[3]
 						);
 				}
 				//
@@ -808,6 +896,8 @@ class Builder
 				$chain[] = $this->getGrammar()->compileExists(
 					$item[1]->toSql()
 				);
+				//
+				$this->importBindingsFromSubquery($item[1], 'where');
 			}
 			//
 			--$count;
@@ -836,8 +926,7 @@ class Builder
 					$callback($query = $this->forSubQuery());
 
 					$column = $this->getGrammar()->compileAliasing(
-						$query->toSql(),
-						(is_int($as) ? $this->generateAlias() : $as)
+						$query->toSql(), (is_int($as) ? $this->generateAlias() : $as)
 					);
 				} elseif ($column instanceof Expression) {
 					$column = $column->getValue();
