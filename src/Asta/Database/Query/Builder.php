@@ -508,9 +508,7 @@ class Builder
 		//
 		$join = JoinClause::make($this, $type, $table);
 		//
-		if (0 === strcasecmp($type, 'cross')) {
-			$this->importBindingsFromSubquery($join, 'where');
-		} else {
+		if (0 !== strcasecmp($type, 'cross')) {
 			if ($first instanceof Closure) {
 				$first($join);
 				//

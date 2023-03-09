@@ -22,6 +22,14 @@ class JoinClause extends Builder
 	private $parentProcessor;
 	private $parentClass;
 
+	/**
+	 * Creates a new instance.
+	 *
+	 * @param	\Asta\Database\Query\Builder	$parentQuery
+	 * @param	string	$type
+	 * @param	mixed	$table
+	 * @return	void
+	 */
 	public function __construct(Builder $parentQuery, $type, $table)
 	{
 		$this->type = $type;
@@ -38,11 +46,29 @@ class JoinClause extends Builder
 		);
 	}
 
+	/**
+	 * Creates a new instance.
+	 *
+	 * @static
+	 * @param	\Asta\Database\Query\Builder	$parentQuery
+	 * @param	string	$type
+	 * @param	mixed	$table
+	 * @return	static
+	 */
 	public static function make(Builder $parentQuery, $type, $table)
 	{
 		return new static($parentQuery, $type, $table);
 	}
 
+	/**
+	 * Adds a join condition.
+	 *
+	 * @param	mixed	$column
+	 * @param	mixed	$operator = null
+	 * @param	mixed	$second = null
+	 * @param	string	$boolean = 'and'
+	 * @return	$this
+	 */
 	public function on($column, $operator = null, $second = null, $boolean = 'and')
 	{
 		if (is_null($second)) {
@@ -54,9 +80,18 @@ class JoinClause extends Builder
 		return $this;
 	}
 
+	/**
+	 * Adds a 'or join' condition.
+	 *
+	 * @param	mixed	$column
+	 * @param	mixed	$operator = null
+	 * @param	mixed	$second = null
+	 * @return	$this
+	 */
 	public function orOn($column, $operator = null, $second = null)
 	{
 		return $this->on($column, $operator, $second, 'or');
 	}
 
 }
+
