@@ -508,13 +508,17 @@ class Builder
 		//
 		$join = JoinClause::make($this, $type, $table);
 		//
-		if ($first instanceof Closure) {
-			$first($join);
-			//
+		if (0 === strcasecmp($type, 'cross')) {
 			$this->importBindingsFromSubquery($join, 'where');
 		} else {
-			$method = $where ? 'where' : 'on';
-			$join->$method($first, $operator, $second);
+			if ($first instanceof Closure) {
+				$first($join);
+				//
+				$this->importBindingsFromSubquery($join, 'where');
+			} else {
+				$method = $where ? 'where' : 'on';
+				$join->$method($first, $operator, $second);
+			}
 		}
 		//
 		$this->joins[] = $join->toSql();
@@ -545,7 +549,7 @@ class Builder
 		$operator = null, $second = null, $where = false
 	) {
 		return $this->join(
-			$table, $first, $operator, $second, 'cross', $where
+			$table, null, null, null, 'cross', false
 		);
 	}
 
@@ -576,12 +580,10 @@ class Builder
 		);
 	}
 
-	public function crossJoinSub(
-		Builder $query, $as, Closure $first,
-		$operator = null, $second = null, $where = false
-	) {
+	public function crossJoinSub(Builder $query, $as)
+	{
 		return $this->joinSub(
-			$query, $as, $first, $operator, $second, 'cross', $where
+			$query, $as, null, null, null, 'cross', false
 		);
 	}
 
@@ -872,23 +874,17 @@ class Builder
 				switch (strtoupper($item[2])) {
 					case 'BETWEEN':
 						$chain[] = $this->getGrammar()->compileBetweenExpression(
-							$item[1],
-							$item[3],
-							false
+							$item[1], $item[3], false
 						);
 						break;
 					case 'NOT BETWEEN':
 						$chain[] = $this->getGrammar()->compileBetweenExpression(
-							$item[1],
-							$item[3],
-							true
+							$item[1], $item[3], true
 						);
 						break;
 					default:
 						$chain[] = $this->getGrammar()->compileExpression(
-							$item[1],
-							$item[2],
-							$item[3]
+							$item[1], $item[2], $item[3]
 						);
 				}
 				//

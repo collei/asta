@@ -13,6 +13,13 @@ use DateTime;
  */
 trait CastsValues
 {
+	/**
+	 * Executes value casting.
+	 *
+	 * @param	string	$value
+	 * @param	mixed	$alternative = null
+	 * @return	mixed
+	 */
 	public function castValue($value, $alternative = null)
 	{
 		$value = trim($value);
@@ -28,6 +35,12 @@ trait CastsValues
 		return $alternative ?: null;
 	}
 
+	/**
+	 * Casts a numeric string into a int or float.
+	 *
+	 * @param	mixed	$value
+	 * @return	int|float
+	 */
 	public function castNumeric($value)
 	{
 		if (is_numeric($value)) {
@@ -41,6 +54,12 @@ trait CastsValues
 		return 0;
 	}
 
+	/**
+	 * Casts a numeric string into a integer.
+	 *
+	 * @param	mixed	$value
+	 * @return	int
+	 */
 	public function castInteger($value)
 	{
 		if (is_int($value) || ctype_digit($value)) {
@@ -50,11 +69,24 @@ trait CastsValues
 		return 0;
 	}
 
+	/**
+	 * Alias of castInteger().
+	 * @see castInteger()
+	 *
+	 * @param	mixed	$value
+	 * @return	int|float
+	 */
 	public function castInt($value)
 	{
 		return $this->castInteger($value);
 	}
 
+	/**
+	 * Cast to fload value.
+	 *
+	 * @param	mixed	$value
+	 * @return	float
+	 */
 	public function castFloat($value)
 	{
 		if (is_numeric($value) || is_float($value)) {
@@ -64,11 +96,24 @@ trait CastsValues
 		return 0.0;
 	}
 
+	/**
+	 * Alias of castFloat().
+	 * @see castFloat()
+	 *
+	 * @param	mixed	$value
+	 * @return	float
+	 */
 	public function castDouble($value)
 	{
 		return $this->castFloat($value);
 	}
 
+	/**
+	 * Try casting to a DateTimeInterface value.
+	 *
+	 * @param	mixed	$value
+	 * @return	\DateTimeInterface
+	 */
 	public function castDateTime($value)
 	{
 		if ($time = strtotime($value)) {
@@ -80,11 +125,23 @@ trait CastsValues
 		return false;
 	}
 
+	/**
+	 * Wraps the value into an array if not already one.
+	 *
+	 * @param	mixed	$value
+	 * @return	array
+	 */
 	public function castArray($value)
 	{
 		return is_array($value) ? $value : array($value);
 	}
 
+	/**
+	 * Try cast a value to a string. Returns false if not convertible.
+	 *
+	 * @param	mixed	$value
+	 * @return	string|false
+	 */
 	public function castString($value)
 	{
 		$stringable = is_numeric($value)
