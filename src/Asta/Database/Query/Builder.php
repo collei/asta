@@ -355,14 +355,23 @@ class Builder
 	}
 
 	/**
-	 **/
-
+	 * Tells if $query is either (a Builder instance or a Closure) or not.
+	 *
+	 * @param string $query
+	 * @return bool
+	 */
 	protected function isQueryable($query)
 	{
-		return ($query instanceof Closure)
-			|| ($query instanceof Builder);
+		return ($query instanceof Closure) || ($query instanceof Builder);
 	}
 
+	/**
+	 * Executes value casting.
+	 *
+	 * @param	string	$value
+	 * @param	mixed	$alternative = null
+	 * @return	mixed
+	 */
 	protected function castValueToSqlLiteral($value, $alternative = null)
 	{
 		$value = $this->castValue($value, $alternative);
@@ -382,6 +391,12 @@ class Builder
 		}
 	}
 
+	/**
+	 * Executes value preparation for the query bindings, if needed.
+	 *
+	 * @param	mixed	$value
+	 * @return	string
+	 */
 	protected function prepareValue($value)
 	{
 		if (is_array($value)) {
@@ -496,9 +511,24 @@ class Builder
 		return $this;
 	}
 
+	/**
+	 * Adds a join clause.
+	 *
+	 * @param	mixed	$table
+	 * @param	mixed	$first
+	 * @param	mixed	$operator = null
+	 * @param	mixed	$second = null
+	 * @param	string	$type = 'inner'
+	 * @param	bool	$where = false
+	 * @return	$this
+	 */
 	public function join(
-		$table, $first,
-		$operator = null, $second = null, $type = 'inner', $where = false
+		$table,
+		$first,
+		$operator = null,
+		$second = null,
+		$type = 'inner',
+		$where = false
 	) {
 		if (is_array($table) && current($table) instanceof Builder) {
 			$as = key($table);
@@ -524,6 +554,16 @@ class Builder
 		return $this;
 	}
 
+	/**
+	 * Adds a left join clause.
+	 *
+	 * @param	mixed	$table
+	 * @param	mixed	$first
+	 * @param	mixed	$operator = null
+	 * @param	mixed	$second = null
+	 * @param	bool	$where = false
+	 * @return	$this
+	 */
 	public function leftJoin(
 		$table, $first,
 		$operator = null, $second = null, $where = false
@@ -533,6 +573,16 @@ class Builder
 		);
 	}
 
+	/**
+	 * Adds a right join clause.
+	 *
+	 * @param	mixed	$table
+	 * @param	mixed	$first
+	 * @param	mixed	$operator = null
+	 * @param	mixed	$second = null
+	 * @param	bool	$where = false
+	 * @return	$this
+	 */
 	public function rightJoin(
 		$table, $first,
 		$operator = null, $second = null, $where = false
@@ -542,15 +592,31 @@ class Builder
 		);
 	}
 
-	public function crossJoin(
-		$table, $first,
-		$operator = null, $second = null, $where = false
-	) {
+	/**
+	 * Adds a cross join clause.
+	 *
+	 * @param	mixed	$table
+	 * @return	$this
+	 */
+	public function crossJoin($table)
+	{
 		return $this->join(
 			$table, null, null, null, 'cross', false
 		);
 	}
 
+	/**
+	 * Adds a join clause.
+	 *
+	 * @param	\Astya\Database\Query\Builder	$query
+	 * @param	string		$as
+	 * @param	\Closure	$first
+	 * @param	mixed	$operator = null
+	 * @param	mixed	$second = null
+	 * @param	string	$type = 'inner'
+	 * @param	bool	$where = false
+	 * @return	$this
+	 */
 	public function joinSub(
 		Builder $query, $as, Closure $first,
 		$operator = null, $second = null, $type = 'inner', $where = false
@@ -560,6 +626,17 @@ class Builder
 		);
 	}
 
+	/**
+	 * Adds a left join clause.
+	 *
+	 * @param	\Astya\Database\Query\Builder	$query
+	 * @param	string		$as
+	 * @param	\Closure	$first
+	 * @param	mixed	$operator = null
+	 * @param	mixed	$second = null
+	 * @param	bool	$where = false
+	 * @return	$this
+	 */
 	public function leftJoinSub(
 		Builder $query, $as, Closure $first,
 		$operator = null, $second = null, $where = false
@@ -569,6 +646,17 @@ class Builder
 		);
 	}
 
+	/**
+	 * Adds a right join clause.
+	 *
+	 * @param	\Astya\Database\Query\Builder	$query
+	 * @param	string		$as
+	 * @param	\Closure	$first
+	 * @param	mixed	$operator = null
+	 * @param	mixed	$second = null
+	 * @param	bool	$where = false
+	 * @return	$this
+	 */
 	public function rightJoinSub(
 		Builder $query, $as, Closure $first,
 		$operator = null, $second = null, $where = false
@@ -578,6 +666,13 @@ class Builder
 		);
 	}
 
+	/**
+	 * Adds a cross join clause.
+	 *
+	 * @param	\Astya\Database\Query\Builder	$query
+	 * @param	string		$as
+	 * @return	$this
+	 */
 	public function crossJoinSub(Builder $query, $as)
 	{
 		return $this->joinSub(
