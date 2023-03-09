@@ -119,9 +119,50 @@ class Builder
 	];
 
 	/**
-	 * @var Connection
+	 * @var \Asta\Database\Connectiona\ConnectionInterface
 	 */
 	protected $connection;
+
+	/**
+	 * Creates a new Builder instance.
+	 *
+	 * @param	\Asta\Database\Connectiona\ConnectionInterface	$connection
+	 * @return	void
+	 */
+	public function __construct(ConnectionInterface $connection)
+	{
+		$this->connection = $connection;
+	}
+
+	/**
+	 * Creates a new Builder instance with a connection obtained from the pool.
+	 *
+	 * @return	static
+	 */
+	public static function new()
+	{
+		return new static(Connection::getFromPool());
+	}
+
+	/**
+	 * Creates a new Builder instance with the same connection as this one.
+	 *
+	 * @return	static
+	 */
+	public function newQuery()
+	{
+		return new static($this->connection);
+	}
+
+	/**
+	 * Creates a new Builder instance for a sub query.
+	 *
+	 * @return	static
+	 */
+	public function forSubQuery()
+	{
+		return $this->newQuery();
+	}
 
 	/**
 	 * Returns the Builder's connection
@@ -152,11 +193,9 @@ class Builder
 	protected function addColumns(array $columns)
 	{
 		foreach ($columns as $as => $column) {
-			if (is_string($as)) {
-				$this->columns[] = $this->compileAliasing($column, $as);
-			} else {
-				$this->columns[] = $column;
-			}
+			$this->columns[] = is_string($as)
+				? $this->compileAliasing($column, $as)
+				: $column;
 		}
 	}
 
@@ -211,6 +250,16 @@ class Builder
 	}
 
 	/**
+	 * Returns a sequencial Binding identifier.
+	 *
+	 * @return string
+	 */
+	protected final function generateBinder()
+	{
+		return ':n' . (++self::$bindingCounter) . 'n';
+	}
+
+	/**
 	 * Adds a value binding
 	 *
 	 * @param mixed $value
@@ -225,7 +274,7 @@ class Builder
 			);
 		}
 		//
-		$next = ':n' . (++self::$bindingCounter) . 'n';
+		$next = $this->generateBinder();
 		//
 		$this->bindings[$type][$next] = $value;
 		//
@@ -308,7 +357,7 @@ class Builder
 	 * @param string $type = 'where'
 	 * @return array
 	 */
-	public function getBindings(string $type = 'where')
+	protected function getBindings(string $type = 'where')
 	{
 		if (!array_key_exists($type, $this->bindings)) {
 			throw new InvalidArgumentException(
@@ -317,6 +366,22 @@ class Builder
 		}
 		//
 		return $binds = $this->bindings[$type];
+	}
+
+	/**
+	 * Returns an array of bound values in the current query.
+	 *
+	 * @return array
+	 */
+	public function values()
+	{
+		$boundValues = [];
+		//
+		foreach ($this->bindings as $type => $bindings) {
+			$boundValues = array_merge($boundValues, $bindings);
+		}
+		//
+		return $boundValues;
 	}
 
 	/**
@@ -427,28 +492,11 @@ class Builder
 	}
 
 	/**
-	 **/
-
-	public function __construct(ConnectionInterface $connection)
-	{
-		$this->connection = $connection;
-	}
-
-	public static function new()
-	{
-		return new static(Connection::getFromPool());
-	}
-
-	public function newQuery()
-	{
-		return new static($this->connection);
-	}
-
-	public function forSubQuery()
-	{
-		return $this->newQuery();
-	}
-
+	 * Adds select columns.
+	 *
+	 * @param	array|string	...$columns
+	 * @return	$this
+	 */
 	public function select($columns = ['*'])
 	{
 		$this->columns = [];
@@ -461,6 +509,11 @@ class Builder
 		return $this;
 	}
 
+	/**
+	 * Force the query to return unique columns.
+	 *
+	 * @return	$this
+	 */
 	public function distinct()
 	{
 		$this->distinct = true;
@@ -468,7 +521,14 @@ class Builder
 		return $this;
 	}
 
-	public function selectSub($query, $as)
+	/**
+	 * Adds a subquery as a select column.
+	 *
+	 * @param	\Closure	$query
+	 * @param	string		$as
+	 * @return	$this
+	 */
+	public function selectSub(Closure $query, $as)
 	{
 		$callback = $query;
 		//
@@ -485,6 +545,13 @@ class Builder
 		return $this;
 	}
 
+	/**
+	 * Adds the from clause.
+	 *
+	 * @param	string|\Closure|\Asta\Database\Query\Builder	$table
+	 * @param	string|null	$as
+	 * @return	$this
+	 */
 	public function from($table, string $as = null)
 	{
 		if ($this->isQueryable($table)) {
@@ -498,6 +565,13 @@ class Builder
 		return $this;
 	}
 
+	/**
+	 * Adds a subquery as a table in the from clause.
+	 *
+	 * @param	\Closure	$table
+	 * @param	string		$as
+	 * @return	$this
+	 */
 	public function fromSub(Closure $table, string $as)
 	{
 		$table($query = $this->forSubQuery());
@@ -618,7 +692,7 @@ class Builder
 	 * @return	$this
 	 */
 	public function joinSub(
-		Builder $query, $as, Closure $first,
+		Builder $query, string $as, Closure $first,
 		$operator = null, $second = null, $type = 'inner', $where = false
 	) {
 		return $this->join(
@@ -680,6 +754,15 @@ class Builder
 		);
 	}
 
+	/**
+	 * Adds a basic, non-nested, where clause.
+	 *
+	 * @param	mixed	$column
+	 * @param	mixed	$operator = null
+	 * @param	mixed	$value = null
+	 * @param	string	$boolean = 'and'
+	 * @return	void
+	 */
 	protected function addBasicWhere(
 		$column, $operator = null, $value = null, $boolean = 'and'
 	) {
@@ -711,6 +794,13 @@ class Builder
 		$this->wheres[] = ['basic', $column, $operator, $value, $boolean];
 	}
 
+	/**
+	 * Adds a nested where clause.
+	 *
+	 * @param	\Asta\Database\Query\Builder	$query
+	 * @param	string	$boolean
+	 * @return	void
+	 */
 	protected function addNestedWhere(Builder $query, string $boolean)
 	{
 		$this->wheres[] = ['nested', $query->toSql(), null, null, $boolean];
@@ -718,6 +808,15 @@ class Builder
 		$this->importBindingsFromSubquery($query, 'where');
 	}
 
+	/**
+	 * Adds a expression to the where clause of the current query.
+	 *
+	 * @param	mixed	$column
+	 * @param	mixed	$operator = null
+	 * @param	mixed	$value = null
+	 * @param	string	$boolean = 'and'
+	 * @return	$this
+	 */
 	public function where(
 		$column, $operator = null, $value = null, $boolean = 'and'
 	) {
@@ -752,16 +851,41 @@ class Builder
 		return $this;
 	}
 
+	/**
+	 * Adds a 'and where' clause to the current query.
+	 *
+	 * @param	mixed	$column
+	 * @param	mixed	$operator = null
+	 * @param	mixed	$value = null
+	 * @return	$this
+	 */
 	public function andWhere($column, $operator = null, $value = null)
 	{
 		return $this->where($column, $operator, $value, 'and');
 	}
 
+	/**
+	 * Adds a 'or where' clause to the current query.
+	 *
+	 * @param	mixed	$column
+	 * @param	mixed	$operator = null
+	 * @param	mixed	$value = null
+	 * @return	$this
+	 */
 	public function orWhere($column, $operator = null, $value = null)
 	{
 		return $this->where($column, $operator, $value, 'or');
 	}
 
+	/**
+	 * Adds a where to compare two columns.
+	 *
+	 * @param	mixed	$column
+	 * @param	mixed	$operator = null
+	 * @param	mixed	$value = null
+	 * @param	string	$boolean = 'and'
+	 * @return	$this
+	 */
 	public function whereColumn($column, $operator = null, $value = null, $boolean = 'and')
 	{
 		if (is_null($value)) {
@@ -777,51 +901,118 @@ class Builder
 		return $this->where($column, $operator, new Expression($value), $boolean);
 	}
 
+	/**
+	 * Adds a 'or where' clause to compare two columns.
+	 *
+	 * @param	mixed	$column
+	 * @param	mixed	$operator = null
+	 * @param	mixed	$value = null
+	 * @return	$this
+	 */
 	public function orWhereColumn($column, $operator = null, $value = null)
 	{
 		return $this->whereColumn($column, $operator, $value, 'or');
 	}
 
+	/**
+	 * Adds a where IN expression.
+	 *
+	 * @param	mixed	$column
+	 * @param	mixed	$values
+	 * @return	$this
+	 */
 	public function whereIn($column, $values)
 	{
 		return $this->where($column, 'in', $values, 'and');
 	}
 
+	/**
+	 * Adds a 'or where' IN expression.
+	 *
+	 * @param	mixed	$column
+	 * @param	mixed	$values
+	 * @return	$this
+	 */
 	public function orWhereIn($column, $values)
 	{
 		return $this->where($column, 'in', $values, 'or');
 	}
 
+	/**
+	 * Adds a where NOT IN expression.
+	 *
+	 * @param	mixed	$column
+	 * @param	mixed	$values
+	 * @return	$this
+	 */
 	public function whereNotIn($column, $values)
 	{
 		return $this->where($column, 'not in', $values, 'and');
 	}
 
+	/**
+	 * Adds a 'or where' NOT IN expression.
+	 *
+	 * @param	mixed	$column
+	 * @param	mixed	$values
+	 * @return	$this
+	 */
 	public function orWhereNotIn($column, $values)
 	{
 		return $this->where($column, 'not in', $values, 'or');
 	}
 
+	/**
+	 * Adds a where IS NULL expression.
+	 *
+	 * @param	mixed	$column
+	 * @return	$this
+	 */
 	public function whereNull($column)
 	{
 		return $this->where($column, 'is', 'NULL');
 	}
 
+	/**
+	 * Adds a 'or where' IS NULL expression.
+	 *
+	 * @param	mixed	$column
+	 * @return	$this
+	 */
 	public function orWhereNull($column)
 	{
 		return $this->where($column, 'is', 'NULL', 'OR');
 	}
 
+	/**
+	 * Adds a where IS NOT NULL expression.
+	 *
+	 * @param	mixed	$column
+	 * @return	$this
+	 */
 	public function whereNotNull($column)
 	{
 		return $this->where($column, 'is not', 'NULL');
 	}
 
+	/**
+	 * Adds a 'or where' IS NOT NULL expression.
+	 *
+	 * @param	mixed	$column
+	 * @return	$this
+	 */
 	public function orWhereNotNull($column)
 	{
 		return $this->where($column, 'is not', 'NULL', 'OR');
 	}
 
+	/**
+	 * Adds a where BETWEEN expression.
+	 *
+	 * @param	mixed	$column
+	 * @param	array	$between
+	 * @return	$this
+	 */
 	public function whereBetween($column, array $between)
 	{
 		if (count($between) < 2) {
@@ -831,6 +1022,13 @@ class Builder
 		return $this->where($column, 'between', $between, 'and');
 	}
 
+	/**
+	 * Adds a 'or where' BETWEEN expression.
+	 *
+	 * @param	mixed	$column
+	 * @param	array	$between
+	 * @return	$this
+	 */
 	public function orWhereBetween($column, array $between)
 	{
 		if (count($between) < 2) {
@@ -840,6 +1038,13 @@ class Builder
 		return $this->where($column, 'between', $between, 'or');
 	}
 
+	/**
+	 * Adds a where NOT BETWEEN expression.
+	 *
+	 * @param	mixed	$column
+	 * @param	array	$between
+	 * @return	$this
+	 */
 	public function whereNotBetween($column, array $between)
 	{
 		if (count($between) < 2) {
@@ -849,6 +1054,13 @@ class Builder
 		return $this->where($column, 'not between', $between, 'and');
 	}
 
+	/**
+	 * Adds a 'or where' NOT BETWEEN expression.
+	 *
+	 * @param	mixed	$column
+	 * @param	array	$between
+	 * @return	$this
+	 */
 	public function orWhereNotBetween($column, array $between)
 	{
 		if (count($between) < 2) {
@@ -858,6 +1070,13 @@ class Builder
 		return $this->where($column, 'not between', $between, 'or');
 	}
 
+	/**
+	 * Adds a where BETWEEN expression against table columns.
+	 *
+	 * @param	mixed	$column
+	 * @param	array	$between
+	 * @return	$this
+	 */
 	public function whereBetweenColumns($column, array $between)
 	{
 		if (count($between) < 2) {
@@ -873,6 +1092,13 @@ class Builder
 		return $this->where($column, 'between', $between, 'and');
 	}
 
+	/**
+	 * Adds a 'or where' BETWEEN expression against table columns.
+	 *
+	 * @param	mixed	$column
+	 * @param	array	$between
+	 * @return	$this
+	 */
 	public function orWhereBetweenColumns($column, array $between)
 	{
 		if (count($between) < 2) {
@@ -888,6 +1114,13 @@ class Builder
 		return $this->where($column, 'between', $between, 'or');
 	}
 
+	/**
+	 * Adds a where NOT BETWEEN expression against table columns.
+	 *
+	 * @param	mixed	$column
+	 * @param	array	$between
+	 * @return	$this
+	 */
 	public function whereNotBetweenColumns($column, array $between)
 	{
 		if (count($between) < 2) {
@@ -903,6 +1136,13 @@ class Builder
 		return $this->where($column, 'not between', $between, 'and');
 	}
 
+	/**
+	 * Adds a 'or where' NOT BETWEEN expression against table columns.
+	 *
+	 * @param	mixed	$column
+	 * @param	array	$between
+	 * @return	$this
+	 */
 	public function orWhereNotBetweenColumns($column, array $between)
 	{
 		if (count($between) < 2) {
@@ -918,6 +1158,13 @@ class Builder
 		return $this->where($column, 'not between', $between, 'or');
 	}
 
+	/**
+	 * Adds a ORDER BY clause.
+	 *
+	 * @param	string	$field
+	 * @param	bool	$asc = true
+	 * @return	$this
+	 */
 	public function orderBy(string $field, bool $asc = true)
 	{
 		$this->orders[$field] = $asc ? 'ASC' : 'DESC';
@@ -925,6 +1172,12 @@ class Builder
 		return $this;
 	}
 
+	/**
+	 * Adds a LIMIT option to a ORDER BY clause.
+	 *
+	 * @param	int	$count
+	 * @return	$this
+	 */
 	public function limit(int $count)
 	{
 		$this->limit = $count;
@@ -932,11 +1185,24 @@ class Builder
 		return $this;
 	}
 
+	/**
+	 * Alias of limit().
+	 * @see limit()
+	 *
+	 * @param	int	$count
+	 * @return	$this
+	 */
 	public function take(int $count)
 	{
 		return $this->limit($count);
 	}
 
+	/**
+	 * Adds a OFFSET option to a ORDER BY clause.
+	 *
+	 * @param	int	$count
+	 * @return	$this
+	 */
 	public function offset(int $count)
 	{
 		$this->offset = $count;
@@ -944,11 +1210,24 @@ class Builder
 		return $this;
 	}
 
+	/**
+	 * Alias of offset().
+	 * @see offset()
+	 *
+	 * @param	int	$count
+	 * @return	$this
+	 */
 	public function skip(int $count)
 	{
 		return $this->offset($count);
 	}
 
+	/**
+	 * Compiles all the where expressions.
+	 *
+	 * @param	array	$wheres
+	 * @return	array
+	 */
 	protected function wheresToChain(array $wheres)
 	{
 		$chain = [];
@@ -995,18 +1274,24 @@ class Builder
 		return $chain;
 	}
 
+	/**
+	 * Compiles the builder into a SQL query with named placeholders.
+	 *
+	 * @return	string
+	 */
 	protected function toSql()
 	{
-		$sql = '';
-		$headed = false;
+		list($sql, $headed) = ['', false];
 		//
-		if (!isset($this->columns)) {
-			$this->columns = ['*'];
-		}
+		// The FROM clause is generally available for SELECT, UPDATE and DELETE
+		// statements. A JOIN clause might never need to include it. 
 		//
 		if (isset($this->from)) {
-			$headed = true;
-			$columns = [];
+			if (!isset($this->columns)) {
+				$this->columns = ['*'];
+			}
+			//
+			list($headed, $columns) = [true, []];
 			//
 			foreach ($this->columns as $as => $column) {
 				if ($column instanceof Closure) {
@@ -1034,6 +1319,9 @@ class Builder
 		//
 		$whereChain = $this->wheresToChain($this->wheres);
 		//
+		// Compiles expressions to Join conditions for JoinClause instances.
+		// Compiles the where clause expressions for other Builder instances. 
+		//
 		if ($this instanceof JoinClause) {
 			$type = strtoupper($this->type);
 			$as = null;
@@ -1048,6 +1336,9 @@ class Builder
 		} else {
 			$sql .= $this->getGrammar()->compileWhereChain($whereChain);
 		}
+		//
+		// The order by clause generator. Note that both offset and limit 
+		// wll be included if and only if the order by clause is also included.
 		//
 		if (!empty($this->orders)) {
 			$sql .= $this->getGrammar()->compileOrderByClause($this->orders);
@@ -1064,16 +1355,32 @@ class Builder
 		return $sql;
 	}
 
+	/**
+	 * Execute the query and returns the results.
+	 *
+	 * @return	$this
+	 */
 	public function execute()
 	{
-		return $this->getConnection()->select($this->toSql());
+		return $this->getConnection()->select($this->toSql(), $this->values());
 	}
 
+	/**
+	 * Execute the query and returns the results.
+	 *
+	 * @return	$this
+	 */
 	public function __toString()
 	{
 		return $this->toSql();
 	}
 
+	/**
+	 * Returns the parameter as a raw expression.
+	 *
+	 * @param	string	$expression
+	 * @return	\Asta\Database\Query\Expression
+	 */
 	public static function raw(string $expression)
 	{
 		return new Expression($expression);

@@ -14,13 +14,37 @@ use Closure;
  */
 class WhereClause extends Builder
 {
+	/**
+	 * @var \Asta\Database\Connections\ConnectionInterface
+	 */
 	private $parentConnection;
+
+	/**
+	 * @var \Asta\Database\Query\Grammars\Grammar
+	 */
 	private $parentGrammar;
+
+	/**
+	 * @var \Asta\Database\Query\Processors\Processor
+	 */
 	private $parentProcessor;
+
+	/**
+	 * @var \Asta\Database\Query\Builder
+	 */
 	private $parentClass;
 
+	/**
+	 * @var array
+	 */
 	private $wheres = [];
 
+	/**
+	 * Creates a new Where clause instance.
+	 *
+	 * @var \Asta\Database\Query\Builder	$parentQuery
+	 * @return	void
+	 */
 	public function __construct(Builder $parentQuery)
 	{
 		$this->parentClass = get_class($parentQuery);
@@ -32,6 +56,15 @@ class WhereClause extends Builder
 		);
 	}
 
+	/**
+	 * Adds a expression to the where clause of the current query.
+	 *
+	 * @param	mixed	$column
+	 * @param	mixed	$operator = null
+	 * @param	mixed	$value = null
+	 * @param	string	$boolean = 'and'
+	 * @return	$this
+	 */
 	public function where($column, $operator = null, $value = null, $boolean = 'and')
 	{
 		if (is_array($column)) {
@@ -45,7 +78,4 @@ class WhereClause extends Builder
 			$this->wheres[] = ['nested', ]
 		}
 	}
-
-
-
 }

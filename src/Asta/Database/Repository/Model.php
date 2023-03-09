@@ -505,6 +505,8 @@ abstract class Model implements Jsonable
 	{
 		if ($this->hasAttributeSetter($name)) {
 			$this->callAttributeSetter($name, $value);
+			//
+			return;
 		}
 		//
 		if ($this->hasConfiguredCast($name)) {
@@ -890,6 +892,9 @@ abstract class Model implements Jsonable
 		$data = static::retrieveAttributes($model);
 		//
 		if (!$model->isRecent() && $model->hasKeyAttribute()) {
+			
+echo '<fieldset><pre>'.__FILE__.','.__LINE__.'.'.__METHOD__.":\r\n".print_r(compact('data','model'),true).'</pre></fieldset>';
+
 			return static::performUpdateOf($model, $data);
 		}
 		//

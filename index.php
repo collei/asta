@@ -53,8 +53,11 @@ $diona->name = 'Diona';
 $diona->avatar = 'kaetzlein.gif';
 $diona->contactTypeId = 1;
 $diona->save();
-*/
+//*/
 
+$tighnari = Contact::findById(46);
+$tighnari->avatar = "https://cdn.vox-cdn.com/thumbor/xVxuBHfJ0lpxxBwFCoGlEcg_hJc=/0x0:3840x2160/920x613/filters:focal(1609x219:2223x833):format(webp)/cdn.vox-cdn.com/uploads/chorus_image/image/71982694/Tighnari.0.jpg";
+$tighnari->save();
 
 
 function prettyPrintNestedParenthesis($text, bool $return = false)
@@ -94,7 +97,7 @@ function prettyPrintNestedParenthesis($text, bool $return = false)
 
 $client_supplied_flithy_data = "d' or 1=1 or ''='"; //%d\'--\r\n select * from usuarios ";
 
-/*
+//*
 $produtos = [
 	Contact::count(),
 	Contact::findById(32),
@@ -102,6 +105,7 @@ $produtos = [
 	Contact::all(),
 ];
 
+//*
 foreach ($produtos as $tranche) {
 	if (is_array($tranche)) {
 		foreach ($tranche as $item) {
@@ -119,7 +123,7 @@ foreach ($produtos as $tranche) {
 		}
 	}
 }
-*/
+//*/
 
 $subquery = Builder::new()->from('attendants', 'a')
 	->join('homes','homes.city','city')
@@ -152,10 +156,10 @@ $querist = Builder::new()->from('clients', 'c')
 
 $sql = '' . $querist . '';
 
-$bindings = $querist->getBindings('where');
+$bindings = $querist->values();
 
-//$builders = compact('produtos','subquery','subwhere','querist');
-$builders = compact('subquery','subwhere','querist');
+$builders = compact('produtos','subquery','subwhere','querist');
+//$builders = compact('subquery','subwhere','querist');
 
 ?>
 <html>

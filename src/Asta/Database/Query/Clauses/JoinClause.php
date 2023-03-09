@@ -15,11 +15,34 @@ use Closure;
  */
 class JoinClause extends Builder
 {
+	/**
+	 * @var string
+	 */
 	protected $type;
+
+	/**
+	 * @var mixed
+	 */
 	protected $table;
+
+	/**
+	 * @var \Asta\Database\Connections\ConnectionInterface
+	 */
 	private $parentConnection;
+
+	/**
+	 * @var \Asta\Database\Query\Grammars\Grammar
+	 */
 	private $parentGrammar;
+
+	/**
+	 * @var \Asta\Database\Query\Processors\Processor
+	 */
 	private $parentProcessor;
+
+	/**
+	 * @var \Asta\Database\Query\Builder
+	 */
 	private $parentClass;
 
 	/**

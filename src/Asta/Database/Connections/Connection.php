@@ -132,6 +132,8 @@ class Connection implements ConnectionInterface
 		//
 		$this->name = $name = 'DBC0' . (new DateTime())->format('YmdHisu');
 		//
+		$this->open();
+		//
 		self::$connectionPool[] = $this;
 	}
 
@@ -303,13 +305,15 @@ class Connection implements ConnectionInterface
 	/**
 	 *	Performs select query
 	 *
-	 *	@param	string	$query	
+	 *	@param	string	$query
+	 *	@param	array	$data = []
 	 *	@return	mixed
 	 */
 	public function select(string $query, array $data = [])
 	{
 		try {
 			return $this->selectQuery($query, $data);
+			//
 		} catch (Throwable $ex) {
 			$this->processError($ex, $query, __METHOD__);
 			//
@@ -322,53 +326,20 @@ class Connection implements ConnectionInterface
 	 *
 	 *	@param	string	$query
 	 *	@param	array	$row
-	 *	@param	bool	$useNamedParams
 	 *	@return	mixed
 	 */
-	public function insertOne(string $query, array $row = [], bool $useNamedParams = false)
+	public function insert(string $query, array $row = [])
 	{
 		$results = 0;
 		//
 		try {
-			$results = $this->insertQuery($query, $row, $useNamedParams);
+			$results = $this->insertQuery($query, $row);
 		} catch (Exception $ex) {
 			$this->processError($ex, $query, __METHOD__);
 			//
 			return null;
 		}
 		//
-		return $results;
-	}
-
-	/**
-	 *	Performs insertion of several rows
-	 *
-	 *	@param	string	$query
-	 *	@param	array	$rows
-	 *	@param	bool	$useNamedParams
-	 *	@return	mixed
-	 */
-	public function insertMany(string $query, array $rows, bool $useNamedParams = false)
-	{
-		$results = 0;
-
-		try
-		{
-			$results = $this->transactBunch(function() use ($query, $rows, $useNamedParams){
-				$list_ids = [];
-				foreach ($rows as $row)
-				{
-					$list_ids[] = $this->insertQuery($query, $row, $useNamedParams);
-				}
-				return $list_ids;
-			});
-		}
-		catch (Exception $ex)
-		{
-			$this->processError($ex, $query, __METHOD__);
-			return null;
-		}
-
 		return $results;
 	}
 
@@ -739,10 +710,10 @@ class Connection implements ConnectionInterface
 		}
 		//
 		$stmt->execute();
-		$rowset = $stmt->fetchAll();
+		$rowset = $this->resultToArray($stmt);
 		$stmt->closeCursor();
 		//
-		return $this->resultToArray($rowset);
+		return $rowset;
 	}
 
 	/**
