@@ -568,31 +568,32 @@ class Grammar implements GrammarInterface
 	}
 
 	/**
-	 * Compiles the given parameters into a leading Delete header.
+	 * Compiles the given parameters into a Delete without where clause.
 	 *
 	 * @param	string	$target
 	 * @return	string
 	 */
-	public function compileDelete(
-		string $target
-	) {
-		return 'DELETE FROM  ' . $target
-			. $this->getTrailingSpace();
+	public function compileDeleteAll(string $target)
+	{
+		return 'DELETE FROM  ' . $target . ';';
 	}
 
 	/**
-	 * Compiles the given parameters into a leading Delete Join header.
+	 * Compiles the given parameters into a sql select instruction.
 	 *
-	 * @param	string	$target
-	 * @param	array	$compiledJoins = []
+	 * @param	array	$columns
+	 * @param	string	$from
+	 * @param	array	$joins = []
+	 * @param	bool	$distinct = false
 	 * @return	string
 	 */
-	public function compileDeleteJoin(
+	public function compileDelete(
 		string $target,
-		array $compiledJoins = []
+		array $joins = [],
+		bool $distinct = false
 	) {
-		return 'DELETE FROM ' . $target
-			. ' ' . implode(' ', $compiledJoins)
+		return 'DELETE FROM ' . trim($target)
+			. (empty($joins) ? '' : (' ' . implode(' ', $joins)))
 			. $this->getTrailingSpace();
 	}
 
