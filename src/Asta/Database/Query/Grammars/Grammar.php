@@ -533,12 +533,12 @@ class Grammar implements GrammarInterface
 	 * Compiles the given parameters into a leading Update header.
 	 *
 	 * @param	string	$target
-	 * @param	array	$expressions
+	 * @param	array	$targetExpressions
 	 * @return	string
 	 */
 	public function compileUpdate(
 		string $target,
-		array $expressions
+		array $targetExpressions
 	) {
 		return 'UPDATE  ' . $target
 			. ' SET ' . $this->compileUpdateExpressions($targetExpressions)
@@ -549,20 +549,18 @@ class Grammar implements GrammarInterface
 	 * Compiles the given parameters into a leading Update Join header.
 	 *
 	 * @param	string	$target
-	 * @param	array	$expressions
-	 * @param	string	$fromTable
+	 * @param	array	$targetExpressions
 	 * @param	array	$compiledJoins = []
 	 * @return	string
 	 */
 	public function compileUpdateJoin(
 		string $target,
-		array $expressions,
-		string $fromTable,
+		array $targetExpressions,
 		array $compiledJoins = []
 	) {
 		return 'UPDATE  ' . $target
 			. ' SET ' . $this->compileUpdateExpressions($targetExpressions)
-			. ' FROM ' . $fromTable
+			. ' FROM ' . $target
 			. ' ' . implode(' ', $compiledJoins)
 			. $this->getTrailingSpace();
 	}
@@ -579,18 +577,15 @@ class Grammar implements GrammarInterface
 	}
 
 	/**
-	 * Compiles the given parameters into a sql select instruction.
+	 * Compiles the given parameters into a sql delete instruction.
 	 *
-	 * @param	array	$columns
-	 * @param	string	$from
+	 * @param	string	$target
 	 * @param	array	$joins = []
-	 * @param	bool	$distinct = false
 	 * @return	string
 	 */
 	public function compileDelete(
 		string $target,
-		array $joins = [],
-		bool $distinct = false
+		array $joins = []
 	) {
 		return 'DELETE FROM ' . trim($target)
 			. (empty($joins) ? '' : (' ' . implode(' ', $joins)))

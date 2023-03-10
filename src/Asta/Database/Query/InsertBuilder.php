@@ -370,9 +370,7 @@ class InsertBuilder extends Builder
 	 */
 	public function execute()
 	{
-		return $this->getConnection()->insert(
-			$this->toSql(), $this->values()
-		);
+		return $this->getConnection()->insert($this->toSql(), $this->values());
 	}
 
 	/**

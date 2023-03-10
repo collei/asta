@@ -348,16 +348,15 @@ class Connection implements ConnectionInterface
 	 *
 	 *	@param	string	$query
 	 *	@param	array	$data
-	 *	@param	bool	$useNamedParams
 	 *	@return	mixed
 	 */
-	public function update(string $query, array $data, bool $useNamedParams = false)
+	public function update(string $query, array $data)
 	{
 		$results = 0;
 
 		try
 		{
-			$results = $this->updateQuery($query, $data, $useNamedParams);
+			$results = $this->updateQuery($query, $data);
 		}
 		catch (Exception $ex)
 		{
@@ -372,16 +371,16 @@ class Connection implements ConnectionInterface
 	 *	Performs deletion
 	 *
 	 *	@param	string	$query
-	 *	@param	bool	$useNamedParams
+	 *	@param	array	$data
 	 *	@return	mixed
 	 */
-	public function delete(string $query, array $data, bool $useNamedParams = false)
+	public function delete(string $query, array $data)
 	{
 		$results = 0;
 
 		try
 		{
-			$results = $this->deleteQuery($query, $data, $useNamedParams);
+			$results = $this->deleteQuery($query, $data);
 		}
 		catch (Exception $ex)
 		{
@@ -755,44 +754,30 @@ class Connection implements ConnectionInterface
 	}
 
 	/**
-	 *	Executes insert query and returns last inserted id (may depends on the underlying db engine)
+	 *	Executes insert query and returns last inserted id
+	 *	(may depends on the underlying db engine)
 	 *
 	 *	@param	string	$sql
-	 *	@param	array	$data
-	 *	@param	bool	$usingNamedParameters
+	 *	@param	array	$data = []
 	 *	@return	int
 	 */
-	protected function insertQuery(string $sql, array $data, bool $usingNamedParameters = false)
+	protected function insertQuery(string $sql, array $data = [])
 	{
 		if (empty($data)) {
 			return $this->executeInsertQuery($sql);
 		}
-		//
+
 		$stmt = null;
 
-		try
-		{
+		try {
 			$stmt = $this->getHandle()->prepare($sql);
-		}
-		catch (Exception $ex)
-		{
-			$this->processError($ex, $sql, __METHOD__ . ' » PDO::prepare(): ', $data);
-		}
-
-		if ($usingNamedParameters)
-		{
-			foreach ($data as $n => $v)
-			{
+			//
+			foreach ($data as $n => $v) {
 				$stmt->bindValue($n, $v);
 			}
-		}
-		else
-		{
-			$i = 0;
-			foreach ($data as $n => $v)
-			{
-				$stmt->bindValue(++$i, $v);
-			}
+			//
+		} catch (Exception $ex) {
+			$this->processError($ex, $sql, __METHOD__ . ' » PDO::prepare(): ', $data);
 		}
 
 		$stmt->execute();
@@ -825,35 +810,20 @@ class Connection implements ConnectionInterface
 	 *
 	 *	@param	string	$sql
 	 *	@param	array	$row
-	 *	@param	bool	$usingNamedParameters
 	 *	@return	int
 	 */
-	protected function updateQuery(string $sql, array $data, bool $usingNamedParameters = false)
+	protected function updateQuery(string $sql, array $data)
 	{
-		try
-		{
+		try {
 			$stmt = $this->getHandle()->prepare($sql);
-		}
-		catch (Exception $ex)
-		{
-			$this->processError($ex, $sql, __METHOD__ . ' » PDO::prepare(): ', $row);
-			return 0;
-		}
-
-		if ($usingNamedParameters)
-		{
-			foreach ($data as $n => $v)
-			{
+			//
+			foreach ($data as $n => $v) {
 				$stmt->bindValue($n, $v);
 			}
-		}
-		else
-		{
-			$i = 0;
-			foreach ($data as $n => $v)
-			{
-				$stmt->bindValue(++$i, $v);
-			}
+			//
+		} catch (Exception $ex) {
+			$this->processError($ex, $sql, __METHOD__ . ' » PDO::prepare(): ', $row);
+			return 0;
 		}
 
 		$stmt->execute();
@@ -866,43 +836,52 @@ class Connection implements ConnectionInterface
 	 *	Executes deletion and returns the number of affected rows (may depends on the underlying db engine)
 	 *
 	 *	@param	string	$sql
-	 *	@param	bool	$usingNamedParameters
+	 *	@param	array	$data
 	 *	@return	int
 	 */
-	protected function deleteQuery(string $sql, array $data, bool $usingNamedParameters = false)
+	protected function deleteQuery(string $sql, array $data = [])
 	{
+		if (empty($data)) {
+			return $this->executeDeleteQuery($sql);
+		}
+
 		$stmt = null;
 
-		try
-		{
+		try {
 			$stmt = $this->getHandle()->prepare($sql);
-		}
-		catch (Exception $ex)
-		{
-			$this->processError($ex, $sql, __METHOD__ . ' » PDO::prepare(): ', $row);
-			return 0;
-		}
-
-		if ($usingNamedParameters)
-		{
-			foreach ($data as $n => $v)
-			{
+			//
+			foreach ($data as $n => $v) {
 				$stmt->bindValue($n, $v);
 			}
-		}
-		else
-		{
-			$i = 0;
-			foreach ($data as $n => $v)
-			{
-				$stmt->bindValue(++$i, $v);
-			}
+			//
+		} catch (Exception $ex) {
+			$this->processError($ex, $sql, __METHOD__ . ' » PDO::prepare(): ', $row);
+			return 0;
 		}
 
 		$stmt->execute();
 		$rows_affected = $stmt->rowCount();
 
 		return $rows_affected;
+	}
+
+	/**
+	 *	Executes the raw delete query and returns the number of rows affected.
+	 *
+	 *	@param	string	$sql
+	 *	@return	array
+	 */
+	protected function executeDeleteQuery(string $sql)
+	{
+		try {
+			return $this->open()->useDatabase()
+						->getHandle()
+						->exec($sql);
+		}  catch (Exception $ex) {
+			$this->processError($ex, $sql, __METHOD__ . ' » PDO::prepare(): ');
+		}
+		//
+		return null;
 	}
 
 	/**
@@ -924,7 +903,7 @@ class Connection implements ConnectionInterface
 		catch (Exception $ex)
 		{
 			$this->getHandle()->rollback();
-
+			//
 			throw new DatabaseQueryException('There are errors during transaction inside transact($bunch).');
 		}
 

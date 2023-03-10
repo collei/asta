@@ -97,6 +97,7 @@ class Builder
 		'orderBy' => [],
 		'union' => [],
 		'unionOrder' => [],
+		'update' => [],
 	];
 
 	/**
@@ -279,6 +280,26 @@ class Builder
 		$this->bindings[$type][$next] = $value;
 		//
 		return $next;
+	}
+
+	/**
+	 * Removes the given binding.
+	 *
+	 * @param mixed $binding
+	 * @param string $type = 'where'
+	 * @return string
+	 */
+	protected function removeBinding(string $binding, string $type = 'where')
+	{
+		if (!array_key_exists($type, $this->bindings)) {
+			throw new InvalidArgumentException(
+				"Invalid binding type: {$type}."
+			);
+		}
+		//
+		unset($this->bindings[$type][$binding]);
+		//
+		return $binding;
 	}
 
 	/**

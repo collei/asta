@@ -26,3 +26,9 @@ Currently under developement.
 
 ## License
 For more info, check the LICENSE file.
+
+### Support
+* Accepting donations through BTC. A few SAT would be appreciated^^
+```
+1CtoobRfoL4pHJ5i24dVCtGWcYcRtBLMaz
+```
