@@ -297,7 +297,9 @@ class Builder
 			);
 		}
 		//
-		unset($this->bindings[$type][$binding]);
+		if (array_key_exists($binding, $this->bindings[$type])) {
+			unset($this->bindings[$type][$binding]);
+		}
 		//
 		return $binding;
 	}

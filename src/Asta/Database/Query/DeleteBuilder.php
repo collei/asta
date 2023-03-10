@@ -44,7 +44,7 @@ class DeleteBuilder extends Builder
 	 */
 	protected function toSql()
 	{
-		$sql = $this->getGrammar()->compileDelete($this->table, $this->joins);
+		$sql = $this->getGrammar()->compileDelete($this->from, $this->joins ?? []);
 		//
 		$whereChain = $this->wheresToChain($this->wheres);
 		//

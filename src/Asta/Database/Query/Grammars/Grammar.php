@@ -566,6 +566,36 @@ class Grammar implements GrammarInterface
 	}
 
 	/**
+	 * Compiles the given parameters into a SET unit for a UPDATE statement.
+	 *
+	 * @param	string	$field
+	 * @param	string	$expression
+	 * @return	string
+	 */
+	public function compileUpdateExpressions(array $expressions)
+	{
+		$items = [];
+		//
+		foreach ($expressions as $field => $expr) {
+			$items[] = $this->compileUpdateExpression($field, $expr);
+		}
+		//
+		return implode(',' . $this->getTrailingSpace(), $items);
+	}
+
+	/**
+	 * Compiles the given parameters into a SET unit for a UPDATE statement.
+	 *
+	 * @param	string	$field
+	 * @param	string	$expression
+	 * @return	string
+	 */
+	public function compileUpdateExpression(string $field, string $expression)
+	{
+		return sprintf('%s = %s', $field, $expression);	
+	}
+
+	/**
 	 * Compiles the given parameters into a Delete without where clause.
 	 *
 	 * @param	string	$target

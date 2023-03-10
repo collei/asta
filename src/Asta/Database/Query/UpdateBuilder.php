@@ -15,7 +15,7 @@ class UpdateBuilder extends Builder
 	/**
 	 * @var array
 	 */
-	protected $values;
+	protected $values = [];
 
 	/**
 	 * Creates a new DeleteBuilder instance.
@@ -67,6 +67,12 @@ class UpdateBuilder extends Builder
 			$binding = $this->values[$field];
 			//
 			$this->removeBinding($binding);
+		}
+		//
+		if ($value instanceof Expression) {
+			$this->values[$field] = $value->getValue();
+			//
+			return $this;
 		}
 		//
 		$this->values[$field] = $this->addBinding($value, 'update');

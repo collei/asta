@@ -49,16 +49,22 @@ class MeanType extends Model
 
 /*
 $diona = new Contact();
-$diona->name = 'Diona';
-$diona->avatar = 'kaetzlein.gif';
+$diona->name = 'Rhinnedotir';
+$diona->avatar = 'rhinnedotir.gif';
 $diona->contactTypeId = 1;
 $diona->save();
 //*/
 
+/*
 $tighnari = Contact::findById(46);
 $tighnari->avatar = "https://cdn.vox-cdn.com/thumbor/xVxuBHfJ0lpxxBwFCoGlEcg_hJc=/0x0:3840x2160/920x613/filters:focal(1609x219:2223x833):format(webp)/cdn.vox-cdn.com/uploads/chorus_image/image/71982694/Tighnari.0.jpg";
 $tighnari->save();
+//*/
 
+/*
+$rhinnedotir = Contact::findById(53);
+$rhinnedotir->delete();
+//*/
 
 function prettyPrintNestedParenthesis($text, bool $return = false)
 {

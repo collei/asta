@@ -436,7 +436,7 @@ abstract class Model implements Jsonable
 	{
 		$method = $this->catterAttributeGetter($name);
 		//
-		return $this->$method();
+		return $this->$method($name);
 	}
 
 	/**
@@ -892,9 +892,6 @@ abstract class Model implements Jsonable
 		$data = static::retrieveAttributes($model);
 		//
 		if (!$model->isRecent() && $model->hasKeyAttribute()) {
-			
-echo '<fieldset><pre>'.__FILE__.','.__LINE__.'.'.__METHOD__.":\r\n".print_r(compact('data','model'),true).'</pre></fieldset>';
-
 			return static::performUpdateOf($model, $data);
 		}
 		//
@@ -939,8 +936,10 @@ echo '<fieldset><pre>'.__FILE__.','.__LINE__.'.'.__METHOD__.":\r\n".print_r(comp
 			$updater->set($model->getUpdatedAt(), new DateTime());
 		}
 		//
+		$key = $model->getKey();
+		//
 		return $updater
-				->where($model->getKey(), '=', $model->$key)
+				->where($key, '=', $model->$key)
 				->execute();
 	}
 
@@ -980,7 +979,7 @@ echo '<fieldset><pre>'.__FILE__.','.__LINE__.'.'.__METHOD__.":\r\n".print_r(comp
 		$key = $model->getKey();
 		//
 		if (!$model->isRecent() && $model->hasAttribute($key)) {
-			$remover = $this->getConnection()->getRemover($table);
+			$remover = $model->getConnection()->getRemover($table);
 			//
 			return $remover
 					->where($key, '=', $model->$key)
@@ -1305,83 +1304,6 @@ echo '<fieldset><pre>'.__FILE__.','.__LINE__.'.'.__METHOD__.":\r\n".print_r(comp
 			->select($me . '.*')
 			->join($there, static::askTableKey(), '=', $ownedKey);
 	}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 	/**
 	 *	Returns a ModelResult collection of all child Models related to the current Model

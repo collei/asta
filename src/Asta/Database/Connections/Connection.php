@@ -211,7 +211,7 @@ class Connection implements ConnectionInterface
 	 */
 	public function getInserter(string $table)
 	{
-		return new InsertBuilder($table, $this);
+		return new InsertBuilder($this, $table);
 	}
 
 	/**
@@ -221,7 +221,7 @@ class Connection implements ConnectionInterface
 	 */
 	public function getUpdater(string $table)
 	{
-		return new UpdateBuilder($table, $this);
+		return new UpdateBuilder($this, $table);
 	}
 
 	/**
@@ -231,7 +231,7 @@ class Connection implements ConnectionInterface
 	 */
 	public function getRemover(string $table)
 	{
-		return new DeleteBuilder($table, $this);
+		return new DeleteBuilder($this, $table);
 	}
 
 	/**
@@ -354,13 +354,12 @@ class Connection implements ConnectionInterface
 	{
 		$results = 0;
 
-		try
-		{
+		try {
 			$results = $this->updateQuery($query, $data);
-		}
-		catch (Exception $ex)
-		{
+			//
+		} catch (Exception $ex) {
 			$this->processError($ex, $query, __METHOD__ . ' PDO::prepare() ');
+			//
 			return null;
 		}
 
@@ -822,7 +821,7 @@ class Connection implements ConnectionInterface
 			}
 			//
 		} catch (Exception $ex) {
-			$this->processError($ex, $sql, __METHOD__ . ' » PDO::prepare(): ', $row);
+			$this->processError($ex, $sql, __METHOD__ . ' » PDO::prepare(): ', $data);
 			return 0;
 		}
 

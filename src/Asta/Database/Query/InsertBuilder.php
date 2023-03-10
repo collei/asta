@@ -35,11 +35,11 @@ class InsertBuilder extends Builder
 	/**
 	 * Creates a new InsertBuilder instance.
 	 *
-	 * @param	string	$table
 	 * @param	\Asta\Database\Connections\ConnectionInterface	$connection
+	 * @param	string	$table
 	 * @return	void
 	 */
-	public function __construct(string $table, ConnectionInterface $connection)
+	public function __construct(ConnectionInterface $connection, string $table)
 	{
 		$this->table = $table;
 		$this->connection = $connection;
