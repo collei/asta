@@ -7,7 +7,7 @@ use Closure;
 use Asta\Database\Box\QueryBox;
 use Asta\Database\Query\DatabaseQueryException;
 use Asta\Database\Query\Dialects\MySqlDialect;
-use Asta\Support\Arr;
+use Jeht\Support\Arr;
 use Asta\Support\Parsers\DsnParser;
 
 /**

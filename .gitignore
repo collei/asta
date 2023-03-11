@@ -1,7 +1,6 @@
 vendor
-src/Jeht
 
 # development
-collei-asta.sublime-project
-collei-asta.sublime-workspace
+*.sublime-project
+*.sublime-workspace
 Databases-locais.jpg

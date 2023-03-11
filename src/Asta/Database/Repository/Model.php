@@ -15,7 +15,7 @@ use Asta\Database\Repository\Relations\BelongsTo;
 use Asta\Database\Interfaces\Repository\Castable;
 use Asta\Database\Interfaces\Repository\CastsInboundAttributes;
 use Asta\Database\Interfaces\Repository\CastsAttributes;
-use Jeht\Interfaces\Support\Jsonable;
+use Jeht\Support\Interfaces\Jsonable;
 use Jeht\Support\Arr;
 use Jeht\Support\Str;
 use Jeht\Collections\Collection;
@@ -1168,16 +1168,14 @@ abstract class Model implements Jsonable
 	public static function count()
 	{
 		$result = static::getBuilderForStatic()
-					->select('COUNT(*) AS [tablenumberofrows]')
+					->select('COUNT(*) AS [tNmbrOfRows]')
 					->execute();
 		//
 		if (empty($result)) {
 			return 0;
 		}
 		//
-		return is_object($result[0])
-					? $result[0]->tablenumberofrows
-					: $result[0]['tablenumberofrows'];
+		return is_object($result[0]) ? $result[0]->tNmbrOfRows : $result[0]['tNmbrOfRows'];
 	}
 
 	/**

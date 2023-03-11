@@ -5,7 +5,7 @@ use Asta\Database\Box\QueryBox;
 use Asta\Database\Query\DatabaseQueryException;
 use Asta\Database\Query\Dialects\SqlServerDialect;
 use Asta\Database\DatabaseException;
-use Asta\Support\Arr;
+use Jeht\Support\Arr;
 use Asta\Support\Parsers\DsnParser;
 use Closure;
 use Exception;

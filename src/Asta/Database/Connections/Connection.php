@@ -19,7 +19,7 @@ use Asta\Database\Query\DeleteBuilder;
 
 use Asta\Database\Box\QueryBox;
 use Asta\Database\Query\DatabaseQueryException;
-use Asta\Support\Arr;
+use Jeht\Support\Arr;
 
 function logerror(...$info)
 {

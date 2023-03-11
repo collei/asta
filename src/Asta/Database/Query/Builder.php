@@ -1333,10 +1333,7 @@ class Builder
 			}
 			//
 			$sql = $this->getGrammar()->compileSelect(
-				$this->columns,
-				$this->from,
-				($this->joins ?? []),
-				$this->distinct
+				$this->columns, $this->from, ($this->joins ?? []), $this->distinct
 			);
 		}
 		//

@@ -387,6 +387,5 @@ class InsertBuilder extends Builder
 		return $this->bindings;
 	}
 
-
 }
 
