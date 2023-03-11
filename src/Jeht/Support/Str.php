@@ -24,10 +24,11 @@ abstract class Str
 			'az' => 'zes',	'ez' => 'zes',	'iz' => 'zes',	'oz' => 'zes',	'uz' => 'zes',
 			'ss' => 'es',	'sh' => 'es',	'ch' => 'es',
 			'ay' => 's',	'ey' => 's',	'oy' => 's',	'uy' => 's',
+			'ao' => 's',	'eo' => 's',	'io' => 's',	'uo' => 's',
 			'x' => 'es',	'z' => 'es',	's' => 'es',	'o' => 'es',
 		],
 		'rules:change' => [
-			'us' => 'i',	'is' => 'es',	'on' => 'a',
+			'us' => 'i',	'is' => 'es',	'rion' => 'ria',
 			'fe' => 'ves',	'f' => 'ves',
 			'y' => 'ies',
 		],
@@ -40,9 +41,17 @@ abstract class Str
 			'piano' => 'pianos',
 			'halo' => 'halos',
 			'gas' => 'gases',
+			'man' => 'men',
+			'woman' => 'women',
+			'child' => 'children',
+			'person' => 'people',
+			'foot' => 'feet',
+			'tooth' => 'teeth',
+			'mouse' => 'mice',
+			'goose' => 'geese',
 		],
 		'invariant' => [
-			'sheep','series','species','deer','fish',
+			'sheep','series','species','deer','fish','crossroads','aircraft',
 		],
 	];
 
@@ -1115,9 +1124,17 @@ abstract class Str
 			return $plural;
 		}
 		//
-		$lengths = [2, 1];
+		$lengths = [4, 2, 1];
 		//
 		foreach ($lengths as $len) {
+			//
+			// avoid crash it would happen when word ending tries
+			// to be longer than the word itself !
+			if ($len >= strlen($noun)) {
+				continue;
+			}
+			//
+			// let's prepare the ending
 			$ending = substr($noun, -$len);
 			//
 			if ($res = static::EN_PLURALIZE['rules:add'][$ending] ?? null) {
