@@ -392,6 +392,26 @@ class Builder
 	}
 
 	/**
+	 * Adds a nested where.
+	 *
+	 * @param	\Asta\Database\Query\Builder $query
+	 * @param	string	$boolean = 'and'
+	 * @return	array
+	 */
+	public function addNestedWhereQuery($query, $boolean = 'and')
+	{
+		if (count($query->wheres)) {
+			$type = 'nested';
+			//
+			$this->wheres[] = compact('type','query','boolean');
+			//
+			$this->mergeBindings($query->getBindings('where'), 'where');
+		}
+		//
+		return $this;
+	}
+
+	/**
 	 * Returns an array of bound values in the current query.
 	 *
 	 * @return array
@@ -405,6 +425,43 @@ class Builder
 		}
 		//
 		return $boundValues;
+	}
+
+	/**
+	 * Prepare the operator and value for a where clause.
+	 *
+	 * @param	mixed	$value
+	 * @param	string	$operator
+	 * @param	bool	$useDefault = false
+	 * @return	array
+	 *
+	 * @throws	\InvalidArgumentException
+	 */
+	public function prepareValueAndOperator($value, $operator, $useDefault = false)
+	{
+		if ($useDefault) {
+			return [$operator, '='];
+		} elseif ($this->invalidOperatorAndValue($operator, $value)) {
+			throw new InvalidArgumentException('Illegal operator and value combination.');
+		}
+		//
+		return [$value, $operator];
+	}
+
+	/**
+	 * Determine if the given operator and value combination is legal.
+	 *
+	 * Prevents using NULL values with invalid operators.
+	 *
+	 * @param	string	$operator
+	 * @param	mixed	$value
+	 * @return	bool
+	 */
+	protected function invalidOperatorAndValue($operator, $value)
+	{
+		return is_null($value)
+			&& in_array($operator, $this->operators)
+			&& !in_array($operator, ['=','<>','!=']);
 	}
 
 	/**
@@ -864,9 +921,9 @@ class Builder
 
 			$this->addNestedWhere($query, $boolean);
 		} else {
-			if (is_null($value)) {
-				[$operator, $value] = ['=', $operator];
-			}
+			[$operator, $value] = $this->prepareValueAndOperator(
+				$value, $operator, func_num_args() === 2
+			);
 			//
 			$this->addBasicWhere($column, $operator, $value, $boolean);
 		}

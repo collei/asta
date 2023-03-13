@@ -303,6 +303,16 @@ class Connection implements ConnectionInterface
 	}
 
 	/**
+	 *	Returns a new Builder instance
+	 *
+	 *	@return	\Asta\Database\Query\Builder
+	 */
+	public function query()
+	{
+		return new Builder($this);
+	}
+
+	/**
 	 *	Performs select query
 	 *
 	 *	@param	string	$query

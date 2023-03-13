@@ -194,6 +194,46 @@ abstract class Model implements Jsonable
 	}
 
 	/**
+	 * Create a new instance of the given model.
+	 *
+	 * @param	array	$attributes = []
+	 * @param	bool	$exists = false
+	 * @return	static
+	 */
+	public function newInstance($attributes = [], $exists = false)
+	{
+		$model = new static((array) $attributes);
+		//
+		$model->exists = $exists;
+		//
+		$model->setConnection($this->getConnection());
+		//
+		$model->setTable($this->getTable());
+		//
+		return $model;
+	}
+
+	/**
+	 * Create a new model instance that is existing.
+	 *
+	 * @param	array	$attributes = []
+	 * @param	\Asta\Database\Connections\ConnectionInterface|null	$connection = null
+	 * @return	static
+	 */
+	public function newFromBuilder($attributes = [], $connection = null)
+	{
+		$model = $this->newInstance([], true);
+		//
+		$model->setRawAttributes((array) $attributes, true);
+		//
+		$model->setConnection($connection ?? $this->getConnection());
+		//
+		//$model->fireModelEvent(' retrieved', false);
+		//
+		return $model;
+	}
+
+	/**
 	 * Get the connection used by the model.
 	 *
 	 * @return \Asta\Database\Connections\ConnectionInterface
@@ -203,8 +243,21 @@ abstract class Model implements Jsonable
 		if (! isset($this->connection)) {
 			$this->connection = Connection::getFromPool();
 		}
-
+		//
 		return $this->connection;
+	}
+
+	/**
+	 * Set the connection used by the model.
+	 *
+	 * @param	\Asta\Database\Connections\ConnectionInterface	$connection
+	 * @return	$this
+	 */
+	public function setConnection(ConnectionInterface $connection)
+	{
+		$this->connection = $connection;
+		//
+		return $this;
 	}
 
 	/**
@@ -517,12 +570,42 @@ abstract class Model implements Jsonable
 	}
 
 	/**
+	 * Set the array of model attributes. No checking is done.
+	 *
+	 * @param	array	$attributes
+	 * @param	bool	$sync = false
+	 * @return	$this
+	 */
+	public function setRawAttributes(array $attributes, $sync = false)
+	{
+		$this->attributes = $attributes;
+		//
+		if ($sync) {
+			$this->syncOriginal();
+		}
+		//
+		return $this;
+	}
+
+	/**
+	 * Sync the original attributes with the current.
+	 *
+	 * @return	$this
+	 */
+	public function syncOriginal()
+	{
+		$this->original = $this->attributes();
+		//
+		return $this;
+	}
+
+	/**
 	 * Fills the attributes
 	 *
 	 * @param array $attributes
 	 * @return $this
 	 */
-	protected function fill(array $attributes)
+	public function fill(array $attributes)
 	{
 		foreach ($attributes as $key => $value) {
 			$this->setAttribute($key, $value);
@@ -1422,6 +1505,43 @@ abstract class Model implements Jsonable
 		return $this->getConnection()->getGrammar()->isValidOrderByItem($clauseItem);
 	}
 
+	public function newQueryWithoutRelationships()
+	{
+		return $this->newModelQuery();
+	}
+
+	public function newQueryWithoutScopes()
+	{
+		return $this->newModelQuery();
+	}
+
+	public function newModelQuery()
+	{
+		return $this->newRepositoryBuilder(
+			$this->newBaseQueryBuilder()
+		)->setModel($this);
+	}
+
+	public function newRepositoryBuilder($query)
+	{
+		return new Builder($query);
+	}
+
+	public function newBaseQueryBuilder()
+	{
+		return $this->getConnection()->query();
+	}
+
+	/**
+	 * Creates a new repository Collection instance.
+	 *
+	 * @param	array	$models
+	 * @return	\Asta\Database\Repository\ModelCollection
+	 */
+	public function newCollection(array $models = [])
+	{
+		return new ModelCollection($models);
+	}
 
 }
 
