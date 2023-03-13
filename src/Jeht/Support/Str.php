@@ -96,7 +96,6 @@ abstract class Str
 	 *	@author	Scott Arciszewski <https://stackoverflow.com/users/2224584/scott-arciszewski>
 	 *	@since	2015-06-29	from https://stackoverflow.com/questions/4356289/php-random-string-generator/31107425#31107425 (viewed 2021-11-02)
 	 *
-	 *
 	 *	@param	int		$length		How many characters do we want?
 	 *	@param	string	$keyspace	A string of all possible characters to select from
 	 *	@return string
