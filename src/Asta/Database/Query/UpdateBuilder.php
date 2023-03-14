@@ -81,6 +81,46 @@ class UpdateBuilder extends Builder
 	}
 
 	/**
+	 * Increments a column value by a given amount. 
+	 *
+	 * @param	string	$field
+	 * @param	int|float	$amount = 1
+	 * @return	$this
+	 */
+	public function increment($field, $amount = 1)
+	{
+		if (! is_numeric($amount)) {
+			throw new InvalidArgumentException(
+				'Non-numeric value passed to increment method.'
+			);
+		}
+		//
+		$wrapped = $this->getGrammar()->wrap($field);
+		//
+		return $this->set($field, $this->raw("$wrapped + $amount"));
+	}
+
+	/**
+	 * Decrements a column value by a given amount. 
+	 *
+	 * @param	string	$field
+	 * @param	int|float	$amount = 1
+	 * @return	$this
+	 */
+	public function decrement($field, $amount = 1)
+	{
+		if (! is_numeric($amount)) {
+			throw new InvalidArgumentException(
+				'Non-numeric value passed to increment method.'
+			);
+		}
+		//
+		$wrapped = $this->getGrammar()->wrap($field);
+		//
+		return $this->set($field, $this->raw("$wrapped - $amount"));
+	}
+
+	/**
 	 * Compiles the builder into a SQL query with named placeholders.
 	 *
 	 * @return	string

@@ -8,7 +8,7 @@ use Asta\Database\Interfaces\Repository\CasterProperties;
 use Asta\Database\Connections\Connection;
 
 use Asta\Database\DatabaseException;
-use Asta\Database\Query\Builder;
+//use Asta\Database\Query\Builder;
 use Asta\Database\Repository\Relations\OneToMany;
 use Asta\Database\Repository\Relations\ManyToMany;
 use Asta\Database\Repository\Relations\BelongsTo;
@@ -263,7 +263,7 @@ abstract class Model implements Jsonable
 	/**
 	 * Get the active Builder instance used by the model.
 	 *
-	 * @return \Asta\Database\Query\Builder
+	 * @return \Asta\Database\Repository\Builder
 	 */
 	public function getBuilder()
 	{
@@ -271,20 +271,20 @@ abstract class Model implements Jsonable
 			return $this->builder;
 		}
 		//
-		return $this->builder = Builder::new();
+		return $this->builder = $this->newModelQuery();
 	}
 
 	/**
 	 *	Returns a Builder instance for a static context.
 	 *
 	 *	@static
-	 *	@return	\Asta\Database\Query\Builder
+	 *	@return	\Asta\Database\Repository\Builder
 	 */
 	protected static function getBuilderForStatic()
 	{
 		$model = new static();
 		//
-		return $model->getBuilder()->from($model->getTable());
+		return $model->newModelQuery();
 	}
 
 	/**
@@ -1155,11 +1155,15 @@ abstract class Model implements Jsonable
 		$table = $model->getTable();
 		$key = $model->getKey();
 		//
+		$data = $model->newModelQuery()->whereKey($id)->get();
+
+/*
 		$data = $model->getConnection()->getBuilder()
 					->from($table)
 					->select('*')
 					->where($key, '=', $id)
 					->execute();
+*/
 		//
 		if (!is_null($data) && (count($data) >= 1)) {
 			return static::fromRow($data[0]);

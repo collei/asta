@@ -127,7 +127,7 @@ class Builder
 	/**
 	 * Creates a new Builder instance.
 	 *
-	 * @param	\Asta\Database\Connectiona\ConnectionInterface	$connection
+	 * @param	\Asta\Database\Connections\ConnectionInterface	$connection
 	 * @return	void
 	 */
 	public function __construct(ConnectionInterface $connection)
@@ -1352,6 +1352,58 @@ class Builder
 		}
 		//
 		return $chain;
+	}
+
+	/**
+	 * Inserts new records in the database.
+	 *
+	 * @param	array	$values
+	 * @return	bool
+	 */
+	public function insert(array $values)
+	{
+		if (empty($values)) {
+			return true;
+		}
+		//
+		if (! is_array(reset($values))) {
+			$values = [$values];
+		} else {
+			foreach ($values as $key => $value) {
+				ksort($value);
+				//
+				$values[$key] = $value;
+			}
+		}
+		//
+		$inserter = $this->getConnection()->getInserter($this->from);
+		//
+		$results = true;
+		//
+		foreach ($values as $k => $record) {
+			$result = (clone $inserter)->fields($record)->execute();
+			//
+			$results = $results && ($result > 0 || $result === true);
+		}
+		//
+		return $results;
+	}
+
+	/**
+	 * Updates records in the database.
+	 *
+	 * @param	array	$values
+	 * @return	string
+	 */
+	public function update(array $values)
+	{
+		$updater = $this->getConnection()->getUpdater($this->from);
+		//
+		foreach ($values as $field => $value) {
+			$updater->set($field, $value);
+		}
+		//
+		return $updater->execute();
 	}
 
 	/**

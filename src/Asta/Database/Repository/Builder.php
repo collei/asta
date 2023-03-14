@@ -220,7 +220,7 @@ class Builder
 	public function fromQuery($query, $bindings = [])
 	{
 		return $this->hydrate(
-			$this->query->getConnection()->select($query, $bindings);
+			$this->query->getConnection()->select($query, $bindings)
 		);
 	}
 
