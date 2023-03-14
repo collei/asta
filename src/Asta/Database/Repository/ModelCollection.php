@@ -151,7 +151,7 @@ class ModelCollection extends Collection
 				&& isset($freshModels[$model->getKey()])
 						? $freshModels[$model->getKey()]
 						: null; 
-		})
+		});
 	}
 
 	/**

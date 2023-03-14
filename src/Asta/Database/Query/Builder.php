@@ -401,9 +401,7 @@ class Builder
 	public function addNestedWhereQuery($query, $boolean = 'and')
 	{
 		if (count($query->wheres)) {
-			$type = 'nested';
-			//
-			$this->wheres[] = compact('type','query','boolean');
+			$this->wheres[] = ['nested', $query, null, null, $boolean];
 			//
 			$this->mergeBindings($query->getBindings('where'), 'where');
 		}
@@ -921,7 +919,7 @@ class Builder
 
 			$this->addNestedWhere($query, $boolean);
 		} else {
-			[$operator, $value] = $this->prepareValueAndOperator(
+			[$value, $operator] = $this->prepareValueAndOperator(
 				$value, $operator, func_num_args() === 2
 			);
 			//

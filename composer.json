@@ -16,6 +16,9 @@
 		"psr-4": {
 			"Asta\\": "src/Asta",
 			"Jeht\\": "src/Jeht"
-		}
+		},
+		"files": [
+			"src/helpers.php"
+		]
 	}
 }

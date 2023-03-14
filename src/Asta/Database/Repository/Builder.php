@@ -28,8 +28,10 @@ class Builder
 	 * @var array
 	 */
 	protected $passthru = [
-		'insert', 'insertOrIgnore', 'insertGetId', 'insertUsing', 'getBindings', 'toSql', 'dump', 'dd',
-		'exists', 'doesntExist', 'count', 'min', 'max', 'avg', 'average', 'sum', 'getConnection', 'raw', 'getGrammar',
+		'values', 'insertOrIgnore', 'insertGetId', 'insertUsing',
+		'getBindings', 'toSql', 'dump', 'dd', 'exists', 'doesntExist',
+		'count', 'min', 'max', 'avg', 'average', 'sum', 'getConnection',
+		'raw', 'getGrammar',
 	];
 
 	/**
@@ -77,6 +79,16 @@ class Builder
 	}
 
 	/**
+	 * Gets the related model instance.
+	 *
+	 * @return	\Asta\Database\Repository\Model
+	 */
+	public function newModelInstance()
+	{
+		return $this->model->newInstance();
+	}
+
+	/**
 	 * Sets the related model instance.
 	 *
 	 * @param	\Asta\Database\Repository\Model	$model
@@ -85,6 +97,8 @@ class Builder
 	public function setModel(Model $model)
 	{
 		$this->model = $model;
+		//
+		$this->getQuery()->from($model->getTable());
 		//
 		return $this;
 	}
@@ -158,7 +172,7 @@ class Builder
 			//
 			$this->query->addNestedWhereQuery($query->getQuery(), $boolean);
 		} else {
-			$this->query->where(...func_get_args());
+			$this->query->where($column, $operator, $value, $boolean);
 		}
 
 		return $this;
@@ -189,7 +203,7 @@ class Builder
 	public function orWhere($column, $operator = null, $value = null)
 	{
 		[$value, $operator] = $this->query->prepareValueAndOperator(
-			$value, $operator, func_num_args() === 2
+			$value, $operator, true // func_num_args() === 2
 		);
 		//
 		return $this->where($column, $operator, $value, 'or');
@@ -410,8 +424,8 @@ class Builder
 	 */
 	public function getModels($columns = ['*'])
 	{
-		return $this->model->hydrate(
-			$this->query->get($columns)->all()
+		return $this->hydrate(
+			$this->query->select($columns)->execute()
 		)->all();
 	}
 
@@ -442,6 +456,39 @@ class Builder
 	public function toBase()
 	{
 		return $this->getQuery();
+	}
+
+	/**
+	 * Gets a base query builder instance.
+	 *
+	 * @return	\Asta\Database\Query\Builder
+	 */
+	public function execute()
+	{
+		$result = $this->query->execute();
+		//
+		if (is_array($result) && isset($result[0]) && is_array($result[0])) {
+			return $this->toModelCollection($result);
+		}
+		//
+		return $result;
+	}
+
+	/**
+	 * Converts a result set array into a ModelCollection instance.
+	 *
+	 * @param	array	$rows = []
+	 * @return	\Asta\Database\Repository\ModelCollection
+	 */
+	protected function toModelCollection(array $rows = [])
+	{
+		$models = [];
+		//
+		foreach ($rows as $row) {
+			$models[] = $this->model->newInstance($row, true);
+		}
+		//
+		return $this->model->newCollection($models);
 	}
 
 }

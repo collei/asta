@@ -560,6 +560,7 @@ class Connection implements ConnectionInterface
 			//
 			$info = print_r([
 				'location' => compact('file','line','method'),
+				'other' => $whereItOccurred,
 				'pdo_error' => $pdo_error,
 				'sql' => $query,
 				'data' => ($data ?? ''),
@@ -574,7 +575,7 @@ class Connection implements ConnectionInterface
 			$info = compact('message','ex','query','data','this');
 		}
 		//
-		logerror('DBCE: ' . get_class($this), $whereItOccurred . ': ' . $message . ', ' . print_r($info, true));
+		logerror('DBCE: ' . get_class($this), print_r($info, true));
 		//
 		$this->addError(get_class($ex), $ex->getCode(), $ex->getMessage());		
 		$this->addError('PDO', -1, 'ST: ' . print_r($info, true));

@@ -6,6 +6,7 @@ use LogicException;
 
 use Asta\Database\Interfaces\Repository\CasterProperties;
 use Asta\Database\Connections\Connection;
+use Asta\Database\Connections\ConnectionInterface;
 
 use Asta\Database\DatabaseException;
 //use Asta\Database\Query\Builder;
@@ -282,9 +283,70 @@ abstract class Model implements Jsonable
 	 */
 	protected static function getBuilderForStatic()
 	{
-		$model = new static();
-		//
-		return $model->newModelQuery();
+		return (new static)->newModelQuery();
+	}
+
+	/**
+	 * Get a Builder instance cleaned from relationships.
+	 *
+	 * @return \Asta\Database\Repository\Builder
+	 */
+	public function newQueryWithoutRelationships()
+	{
+		return $this->newModelQuery();
+	}
+
+	/**
+	 * Get a Builder instance cleaned from any scopes.
+	 *
+	 * @return \Asta\Database\Repository\Builder
+	 */
+	public function newQueryWithoutScopes()
+	{
+		return $this->newModelQuery();
+	}
+
+	/**
+	 * Get a Builder instance for the model.
+	 *
+	 * @return \Asta\Database\Repository\Builder
+	 */
+	public function newModelQuery()
+	{
+		return $this->newRepositoryBuilder(
+			$this->newBaseQueryBuilder()
+		)->setModel($this);
+	}
+
+	/**
+	 * Generates a Builder instance for the model.
+	 *
+	 * @return \Asta\Database\Repository\Builder
+	 */
+	public function newRepositoryBuilder($query)
+	{
+		return (new Builder($query))->from($this->getTable());
+	}
+
+	/**
+	 * Get a regular Builder instance for the related database table.
+	 *
+	 * @return \Asta\Database\Query\Builder
+	 */
+	public function newBaseQueryBuilder()
+	{
+		return $this->getConnection()->getBuilder($this->getTable());
+	}
+
+	/**
+	 * Creates a new repository Collection instance.
+	 *
+	 * @param	array	$models
+	 * @return	\Asta\Database\Repository\ModelCollection
+	 */
+	public function newCollection(array $models = [])
+	{
+		return new ModelCollection($models);
 	}
 
 	/**
@@ -330,6 +392,16 @@ abstract class Model implements Jsonable
 	public function getKey()
 	{
 		return $this->primaryKey ?? 'id';
+	}
+
+	/**
+	 * Get the qualified name of the primary key.
+	 *
+	 * @return string
+	 */
+	public function getQualifiedKeyName()
+	{
+		return $this->getTable().'.'.$this->getKey();
 	}
 
 	/**
@@ -585,6 +657,22 @@ abstract class Model implements Jsonable
 		}
 		//
 		return $this;
+	}
+
+	/**
+	 * Returns an associative array with all set model attributes.
+	 *
+	 * @return	array
+	 */
+	public function attributes()
+	{
+		$current = [];
+		//
+		foreach ($this->attributes as $field => $value) {
+			$current[$field] = $this->getAttribute($field, $value);
+		}
+		//
+		return $current;
 	}
 
 	/**
@@ -1097,19 +1185,13 @@ abstract class Model implements Jsonable
 	 *
 	 *	@return	instanceof \Asta\Database\Repository\Model
 	 */
-	protected static function fromRow(array $row)
+	protected static function fillFromRow(array $row)
 	{
-		$piece = null;
+		$piece = (static::class !== self::class)
+			? (new static($row))
+			: (new NullModel($row));
 		//
-		if (static::class !== self::class) {
-			$piece = new static($row);
-		} else {
-			$piece = new NullModel($row);
-			//
-			$piece->fill($row);
-		}
-		//
-		return $piece;
+		return $piece->fill($row);
 	}
 
 	/**
@@ -1119,14 +1201,14 @@ abstract class Model implements Jsonable
 	 *	@param	string	$modelClass
 	 *	@return	\Asta\Database\Repository\Model[]
 	 */
-	protected static function fillModelList(array $rowset, string $modelClass = null)
+	protected static function fillFromRows(array $rowset, string $modelClass = null)
 	{
 		$list = [];
 		//
-		$modelClass = $modelClass ?? Model::class;
+		$modelClass = $modelClass ?? NullModel::class;
 		//
 		foreach ($rowset as $row) {
-			$list[] = $modelClass::fromRow($row);
+			$list[] = (new $modelClass)->fill($row);
 		}
 		//
 		return $list;
@@ -1156,17 +1238,9 @@ abstract class Model implements Jsonable
 		$key = $model->getKey();
 		//
 		$data = $model->newModelQuery()->whereKey($id)->get();
-
-/*
-		$data = $model->getConnection()->getBuilder()
-					->from($table)
-					->select('*')
-					->where($key, '=', $id)
-					->execute();
-*/
 		//
 		if (!is_null($data) && (count($data) >= 1)) {
-			return static::fromRow($data[0]);
+			return $data[0];
 		}
 		//
 		return null;
@@ -1227,9 +1301,13 @@ abstract class Model implements Jsonable
 				$count = count($result);
 				//
 				if ($count == 1) {
-					return static::fromRow($result[0]);
+					return static::fillFromRow($result[0]);
 				} elseif ($count > 1) {
-					return static::fillModelList($result, static::class);
+					if ($result instanceof ModelCollection) {
+						return $result;
+					}
+					//
+					return static::fillFromRows($result, static::class);
 				}
 			}
 		}
@@ -1262,7 +1340,9 @@ abstract class Model implements Jsonable
 			return 0;
 		}
 		//
-		return is_object($result[0]) ? $result[0]->tNmbrOfRows : $result[0]['tNmbrOfRows'];
+		return is_object($result[0])
+					? $result[0]->tNmbrOfRows
+					: $result[0]['tNmbrOfRows'];
 	}
 
 	/**
@@ -1296,7 +1376,7 @@ abstract class Model implements Jsonable
 	 */
 	public static function all(string ...$orderBy)
 	{
-		$query = Builder::new()->from(static::askTableName())->select('*');
+		$query = static::getBuilderForStatic()->select();
 		//
 		foreach ($orderBy as $ord) {
 			if ($this->validateOrderByItem($ord, $field, $direction)) {
@@ -1307,7 +1387,13 @@ abstract class Model implements Jsonable
 		$result = $query->execute();
 		//
 		if (!is_null($result)) {
-			return self::fillModelList($result, static::class);
+			if ($result instanceof ModelCollection) {
+				return $result;	
+			}
+			//
+			return (new static)->newCollection(
+				self::fillFromRows($result, static::class)	
+			);
 		}
 		//
 		return $result;
@@ -1323,7 +1409,7 @@ abstract class Model implements Jsonable
 	 *	@param	int	$page
 	 *	@param	int	$rowsPerPage
 	 *	@param	string	...$orderBy
-	 *	@return	\Asta\Database\Repository\ModelResult
+	 *	@return	\Asta\Database\Repository\ModelCollection
 	 */
 	public static function paged(int $page, int $rowsPerPage = null, string ...$orderBy)
 	{
@@ -1342,13 +1428,19 @@ abstract class Model implements Jsonable
 			}
 		}
 		//
-		$query = $query->execute();
+		$result = $query->execute();
 		//
-		if (!is_null($query)) {
-			return self::fillModelList($query, static::class);
+		if (!is_null($result)) {
+			if ($result instanceof ModelCollection) {
+				return $result;	
+			}
+			//
+			return (new static)->newCollection(
+				self::fillFromRows($result, static::class)	
+			);
 		}
 		//
-		return ModelResult::fromEmpty();
+		return (new static)->newCollection();
 	}
 
 	/**
@@ -1396,7 +1488,7 @@ abstract class Model implements Jsonable
 	 *	@param	mixed	$related
 	 *	@param	string	$foreignKey
 	 *	@param	string	$localKey
-	 *	@return	\Asta\Database\Repository\Model[]
+	 *	@return	\Asta\Database\Repository\ModelCollection
 	 */
 	public function hasMany(
 		$related, string $foreignKey = null, string $localKey = null
@@ -1415,8 +1507,10 @@ abstract class Model implements Jsonable
 		//
 		$oneToMany = new OneToMany($this, new $related, $foreignKey, $localKey);
 		//
-		return $this->hasManyRelationsCache[$caller] = static::fillModelList(
-			$results = $oneToMany->fetch(), $related
+		return $this->hasManyRelationsCache[$caller] = (new static)->newCollection(
+			static::fillFromRows(
+				$results = $oneToMany->fetch(), $related
+			)
 		);
 	}
 
@@ -1445,7 +1539,7 @@ abstract class Model implements Jsonable
 		//
 		$belongsTo = new BelongsTo($this, new $related, $foreignKey, $localKey);
 		//
-		return $this->belongsToRelationsCache[$caller] = $related::fromRow(
+		return $this->belongsToRelationsCache[$caller] = $related::fillFromRow(
 			$results = $belongsTo->fetch()
 		);
 	}
@@ -1481,8 +1575,10 @@ abstract class Model implements Jsonable
 			$this, new $related(), $intermediate, $foreign, $foreignFar
 		);
 		//
-		return $this->belongsToManyRelationsCache[$related] = static::fillModelList(
-			$manyToMany->fetch(), $related
+		return $this->belongsToManyRelationsCache[$related] = (new static)->newCollection(
+			static::fillFromRows(
+				$manyToMany->fetch(), $related
+			)
 		);
 	}
 
@@ -1509,44 +1605,25 @@ abstract class Model implements Jsonable
 		return $this->getConnection()->getGrammar()->isValidOrderByItem($clauseItem);
 	}
 
-	public function newQueryWithoutRelationships()
+	/**
+	 *	Returns the first Model from a Collection.
+	 *
+	 *	@return	\Asta\Database\Repository\Model
+	 */
+	public function first()
 	{
-		return $this->newModelQuery();
-	}
-
-	public function newQueryWithoutScopes()
-	{
-		return $this->newModelQuery();
-	}
-
-	public function newModelQuery()
-	{
-		return $this->newRepositoryBuilder(
-			$this->newBaseQueryBuilder()
-		)->setModel($this);
-	}
-
-	public function newRepositoryBuilder($query)
-	{
-		return new Builder($query);
-	}
-
-	public function newBaseQueryBuilder()
-	{
-		return $this->getConnection()->query();
+		return $this;
 	}
 
 	/**
-	 * Creates a new repository Collection instance.
+	 *	Returns the last Model from a Collection.
 	 *
-	 * @param	array	$models
-	 * @return	\Asta\Database\Repository\ModelCollection
+	 *	@return	\Asta\Database\Repository\Model
 	 */
-	public function newCollection(array $models = [])
+	public function last()
 	{
-		return new ModelCollection($models);
+		return $this;
 	}
 
 }
-
 

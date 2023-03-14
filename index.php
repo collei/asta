@@ -48,22 +48,22 @@ class MeanType extends Model
 }
 
 /*
-$diona = new Contact();
-$diona->name = 'Rhinnedotir';
-$diona->avatar = 'rhinnedotir.gif';
-$diona->contactTypeId = 1;
-$diona->save();
+$novo = new Contact();
+$novo->name = 'Chlothar Alberich';
+$novo->avatar = 'rhinnedotir.gif';
+$novo->contactTypeId = 1;
+$novo->save();
 //*/
 
 /*
-$tighnari = Contact::findById(46);
-$tighnari->avatar = "https://cdn.vox-cdn.com/thumbor/xVxuBHfJ0lpxxBwFCoGlEcg_hJc=/0x0:3840x2160/920x613/filters:focal(1609x219:2223x833):format(webp)/cdn.vox-cdn.com/uploads/chorus_image/image/71982694/Tighnari.0.jpg";
-$tighnari->save();
+$apideite = Contact::findById(55);
+$apideite->avatar = "https://collei.tv/sites/genshin/teyvat/mos/hilichurls?type=common";
+$apideite->save();
 //*/
 
 /*
-$rhinnedotir = Contact::findById(53);
-$rhinnedotir->delete();
+$deletaras = Contact::findById(54);
+$deletaras->delete();
 //*/
 
 function prettyPrintNestedParenthesis($text, bool $return = false)
