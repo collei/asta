@@ -20,5 +20,15 @@
 		"files": [
 			"src/helpers.php"
 		]
-	}
+	},
+	"funding": [
+		{
+			"type": "bitcoin",
+			"url": "1CtoobRfoL4pHJ5i24dVCtGWcYcRtBLMaz"
+		},
+		{
+			"type": "monero",
+			"url": "43DvqaNskRfeyNnCfvapxrXg9Bb4EADCj9aFW3FQdthi3ukhxZRtLvQiqMNeYvNvxN8F7WaULkKJJ63RxHgohrPtDuykFmL"
+		}
+	]
 }

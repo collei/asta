@@ -173,6 +173,38 @@ class Grammar implements GrammarInterface
 	}
 
 	/**
+	 * Wraps a column name for the SQL processor.
+	 *
+	 * @param	string	$column
+	 * @return	string
+	 */
+	public function wrapColumn(string $column)
+	{
+		if (strpos($column, '.')) {
+			$units = explode('.', $column);
+			//
+			$results = array_map(function ($unit) {
+				return $this->wrapColumnName($unit);
+			}, $units);
+			//
+			return implode('.', $results);
+		}
+		//
+		return $this->wrapColumnName($column);
+	}
+
+	/**
+	 * Wraps column name unit for the SQL processor.
+	 *
+	 * @param	string	$unit
+	 * @return	string
+	 */
+	protected function wrapColumnName(string $unit)
+	{
+		return '[' . $unit . ']';
+	}
+
+	/**
 	 * Formats bool value to SQL literal.
 	 *
 	 * @param	bool	$value
@@ -315,13 +347,13 @@ class Grammar implements GrammarInterface
 	 * @return	string
 	 */
 	public function compileJoin(
-		$type, $table, $as = null, array $whereChain = []
+		$type, $table, $as = null, array $wheres = []
 	) {
 		return $this->getLeadingSpace() . (
 			($as)
 				? "{$type} JOIN ({$table}) AS {$as} ON"
 				: "{$type} JOIN {$table} ON"
-		) . implode(' ', $whereChain) . $this->getTrailingSpace();
+		) . implode(' ', $wheres) . $this->getTrailingSpace();
 	}
 
 	/**
@@ -364,12 +396,16 @@ class Grammar implements GrammarInterface
 	 * @param	bool	$not = false
 	 * @return	string
 	 */
-	public function compileInExpression($column, array $listing, bool $not = false)
+	public function compileInExpression($column, $listing, bool $not = false)
 	{
 		$in = $not ? 'NOT IN' : 'IN';
 		//
+		if (is_array($listing)) {
+			$listing = implode(', ', $listing);
+		}
+		//
 		return $this->getLeadingSpace()
-			. "({$column} {$in} (".implode(', ', $listing)."))"
+			. "({$column} {$in} ({$listing}))"
 			. $this->getTrailingSpace();
 	}
 
@@ -396,12 +432,13 @@ class Grammar implements GrammarInterface
 	 * Compiles the given $subquery into a EXISTS subquery.
 	 *
 	 * @param	string	$subquery
+	 * @param	bool	$not = false
 	 * @return	string
 	 */
-	public function compileExists($subquery)
+	public function compileExists($subquery, bool $not = false)
 	{
 		return $this->getLeadingSpace()
-			. "EXISTS ({$subquery})"
+			. ($not ? 'NOT ' : '') . "EXISTS ({$subquery})"
 			. $this->getTrailingSpace();
 	}
 
@@ -475,13 +512,95 @@ class Grammar implements GrammarInterface
 	 * Compiles the limit clause.
 	 *
 	 * @param	int		$limit
+	 * @param	int		$offset = null
 	 * @return	string
 	 */
-	public function compileLimitClause(int $limit)
+	public function compileLimitClause(int $limit, int $offset = null)
 	{
+		$offset = $offset ?? 0;
+		//
+		if ($limit < 1 && $offset > 0) {
+			return $this->compileOffsetClause($offset);
+		}
+		//
 		return $this->getLeadingSpace()
-			. 'FETCH NEXT ' . $this->valueToSqlInt($limit) . ' ROWS ONLY'
+			. "OFFSET {$offset} ROWS  FETCH NEXT {$limit} ROWS ONLY"
 			. $this->getTrailingSpace();
+	}
+
+	/**
+	 * Normalize the order by field list when needed.
+	 *
+	 * An array will be converted if it has string keys (i.e., an associative
+	 * array with column names as keys and orders as values).
+	 *
+	 * @param	int		$limit
+	 * @param	int		$offset = null
+	 * @return	string
+	 */
+	protected function planifyOrderByItems(array $orders)
+	{
+		if (empty($orders)) {
+			return $orders;
+		}
+		//
+		if (is_int(key($orders))) {
+			return $orders;
+		}
+		//
+		return array_map(
+			[$this, 'compileOrderByItem'], array_keys($orders), array_values($orders)
+		);
+	}
+
+	/**
+	 * Compiles a whole select statement from its constituent parts.
+	 *
+	 * @param	string	$table
+	 * @param	array	$columns
+	 * @param	array	$joins = []
+	 * @param	array	$wheres = []
+	 * @param	array	$groups = []
+	 * @param	array	$havings = []
+	 * @param	array	$orders = []
+	 * @param	int		$limit = null
+	 * @param	int		$offset = null
+	 * @return	string
+	 */
+	public function compileSelectStatement(
+		string $table, array $columns,
+		array $joins = [], array $wheres = [], array $groups = [],
+		array $havings = [], array $orders = [],
+		int $limit = null, int $offset = null 
+	) {
+		$columns = implode(', ', $columns);
+		//
+		$joins = empty($joins)
+			? ''
+			: ' ' . implode(' ', $joins);
+		//
+		$wheres = empty($wheres)
+			? ''
+			: ' WHERE ' . implode(' ', $wheres);
+		//
+		$groups = empty($groups)
+			? ''
+			: ' ORDER BY ' . implode(' ', $groups);
+		//
+		$havings = empty($havings)
+			? ''
+			: ' HAVING ' . implode(' ', $havings);
+		//
+		$orders = empty($orders)
+			? ''
+			: ' ORDER BY ' . implode(' ', $this->planifyOrderByItems($orders));
+		//
+		$limits = ($limit)
+			? (' LIMIT ' . ($offset ? "{$offset}, " : '') . "{$limit}")
+			: '';
+		//
+		return "SELECT {$columns} FROM {$table}"
+			. ($joins.$wheres.$groups.$havings.$orders.$limits);
 	}
 
 	/**

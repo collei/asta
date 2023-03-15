@@ -143,7 +143,7 @@ $subwhere = Builder::new()->fromSub(function($query){
 	}, 'allowed_names')
 	->select('name')
 	->whereIn('language', ['en-us','pt-br','jp-jp'])
-	->orWhere('fosters', Builder::raw('homes.city'));
+	->orWhereColumn('fosters', 'homes.city');
 
 $querist = Builder::new()->from('clients', 'c')
 	->join('requests as r','c.id','=','r.id_client')

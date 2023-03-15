@@ -12,6 +12,11 @@ use Asta\Database\Connections\MsSqlServerConnection;
  */
 class Connector
 {
+	protected const DRIVERS = [
+		'MySql' => ['mysql', 'mysqli', 'mariadb'],
+		'SqlServer' => ['mssql', 'sqlsrv', 'sqlsvr', 'sqlserver'],
+	];
+
 	/**
 	 *	@var string
 	 */
@@ -211,18 +216,17 @@ class Connector
 
 	public static function make(string $driver, string $dsn, string $username, string $password, string $db = '')
 	{
-		if ($driver == 'mysql')
-		{
-			return new MySqliConnection($dsn, $db, $username, $password);
+		$driver = strtolower($driver);
+		//
+		if (in_array($driver, self::DRIVERS['MySql'])) {
+			return new MySqlConnection($dsn, $db, $username, $password);
 		}
-		elseif ($driver == 'sqlsrv' || $driver == 'sqlsvr' || $driver == 'sqlserver')
-		{
+		//
+		if (in_array($driver, self::DRIVERS['SqlServer'])) {
 			return new MsSqlServerConnection($dsn, $db, $username, $password);
 		}
-		else
-		{
-			return new Connection($dsn, $db, $username, $password);
-		}
+		//
+		return new Connection($dsn, $db, $username, $password);
 	}
 	
 }

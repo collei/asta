@@ -920,7 +920,7 @@ class Builder
 			$this->addNestedWhere($query, $boolean);
 		} else {
 			[$value, $operator] = $this->prepareValueAndOperator(
-				$value, $operator, func_num_args() === 2
+				$value, $operator, is_null($value)
 			);
 			//
 			$this->addBasicWhere($column, $operator, $value, $boolean);
@@ -1332,6 +1332,16 @@ class Builder
 							$item[1], $item[3], true
 						);
 						break;
+					case 'IN':
+						$chain[] = $this->getGrammar()->compileInExpression(
+							$item[1], $item[3], false
+						);
+						break;
+					case 'NOT IN':
+						$chain[] = $this->getGrammar()->compileInExpression(
+							$item[1], $item[3], true
+						);
+						break;
 					default:
 						$chain[] = $this->getGrammar()->compileExpression(
 							$item[1], $item[2], $item[3]
@@ -1411,7 +1421,68 @@ class Builder
 	 */
 	protected function toSql()
 	{
+		if ($this instanceof JoinClause) {
+			$type = strtoupper($this->type);
+			$as = null;
+			$table = $this->table;
+			//
+			if (is_array($table)) {
+				$as = array_key_first($table);
+				$table = $table[$as]->toSql();
+			}
+			//
+			return $this->getGrammar()->compileJoin(
+				$type, $table, $as, $this->wheresToChain($this->wheres)
+			);
+		}
+		//
+
+		$table = $this->from;
+
+		$columns = ['*'];
+
+		if (isset($this->columns)) {
+			$columns = [];
+			//
+			foreach ($this->columns as $as => $column) {
+				if ($column instanceof Closure) {
+					$callback = $column;
+
+					$callback($query = $this->forSubQuery());
+
+					$column = $this->getGrammar()->compileAliasing(
+						$query->toSql(), (is_int($as) ? $this->generateAlias() : $as)
+					);
+				} elseif ($column instanceof Expression) {
+					$column = $column->getValue();
+				}
+				//
+				$columns[] = $column;
+			}
+		}
+
+		$joins = $this->joins ?? [];
+
+		$wheres = $this->wheresToChain($this->wheres);
+
+		$groups = $havings = [];
+
+		$orders = $this->orders ?? [];
+
+		$limit = $this->limit ?? null;
+
+		$offset = $this->offset ?? null;
+
+		$sql = $this->getGrammar()->compileSelectStatement(
+			$table, $columns, $joins, $wheres, $groups,
+			$havings, $orders, $limit, $offset
+		);
+
+/*
+
+
 		list($sql, $headed) = ['', false];
+		//
 		//
 		// The FROM clause is generally available for SELECT, UPDATE and DELETE
 		// statements. A JOIN clause might never need to include it. 
@@ -1470,15 +1541,12 @@ class Builder
 		if (!empty($this->orders)) {
 			$sql .= $this->getGrammar()->compileOrderByClause($this->orders);
 			//
-			if ($this->offset) {
-				$sql .= $this->getGrammar()->compileOffsetClause($this->offset);
-			}
-			//
 			if ($this->limit) {
-				$sql .= $this->getGrammar()->compileLimitClause($this->limit);
+				$sql .= $this->getGrammar()->compileLimitClause($this->limit, $this->offset);
 			}
 		}
 		//
+*/
 		return $sql;
 	}
 

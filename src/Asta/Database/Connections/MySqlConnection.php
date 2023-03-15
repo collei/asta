@@ -3,7 +3,7 @@ namespace Asta\Database\Connections;
 
 use PDO;
 use Asta\Database\Query\Processors\Processor;
-use Asta\Database\Query\Grammars\MsSqlServerGrammar;
+use Asta\Database\Query\Grammars\MySqlGrammar;
 
 
 /**
@@ -12,7 +12,7 @@ use Asta\Database\Query\Grammars\MsSqlServerGrammar;
  *	@author alarido <alarido.su@gmail.com>
  *	@since 2021-07-xx
  */
-class MsSqlServerConnection implements ConnectionInterface
+class MySqlConnection implements ConnectionInterface
 {
 	/**
 	 *	@var array
@@ -36,7 +36,7 @@ class MsSqlServerConnection implements ConnectionInterface
 	 */
 	protected function initialize()
 	{
-		$this->grammar = new MsSqlServerGrammar();
+		$this->grammar = new MySqlGrammar();
 		$this->processor = new Processor();
 	}
 

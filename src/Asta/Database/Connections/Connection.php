@@ -16,28 +16,9 @@ use Asta\Database\Query\Builder;
 use Asta\Database\Query\InsertBuilder;
 use Asta\Database\Query\UpdateBuilder;
 use Asta\Database\Query\DeleteBuilder;
-
-use Asta\Database\Box\QueryBox;
 use Asta\Database\Query\DatabaseQueryException;
 use Jeht\Support\Arr;
 
-function logerror(...$info)
-{
-	$dt = debug_backtrace(2,2)[1] ?? debug_backtrace(2,2)[0];
-	//
-	$file = $dt['file'] ?? '(none)';
-	$line = $dt['line'] ?? '(none)';
-	$method = isset($dt['class'])
-		? ($dt['class'] . ($dt['type'] ?? '-:') . $dt['function'])
-		: $dt['function'];
-	//
-	$dumpit = '<div><b>dd</b>'
-		. " (<code>$file</code>, <code>$line</code>, <code>$method</code>): <pre>"
-		. print_r($info,true)
-		. '</pre></div>';
-	//
-	echo ($dumpit);
-}
 
 /**
  *	Encapsulates the connection features and tasks
@@ -127,14 +108,24 @@ class Connection implements ConnectionInterface
 		$this->username = $username;
 		$this->password = $password;
 		//
-		$this->grammar = new Grammar();
-		$this->processor = new Processor();
+		$this->initialize();
 		//
 		$this->name = $name = 'DBC0' . (new DateTime())->format('YmdHisu');
 		//
 		$this->open();
 		//
 		self::$connectionPool[] = $this;
+	}
+
+	/**
+	 *	Assigns the proper grammar and processor.
+	 *
+	 *	@return	void
+	 */
+	protected function initialize()
+	{
+		$this->grammar = new Grammar();
+		$this->processor = new Processor();
 	}
 
 	/**
@@ -240,7 +231,7 @@ class Connection implements ConnectionInterface
 	 *	@param	\Asta\Database\Processors\ProcessorInterface	$processor
 	 *	@return	void
 	 */
-	public function setProcessor(ProcessorInterface $processor)
+	public function setProcessor(Processor $processor)
 	{
 		$this->processor = $processor;
 	}
@@ -351,6 +342,23 @@ class Connection implements ConnectionInterface
 		}
 		//
 		return $results;
+	}
+
+	/**
+	 *	Performs insertion of one row
+	 *
+	 *	@param	\Asta\Database\Query\Builder	$query
+	 *	@param	string	$sql
+	 *	@param	array	$values
+	 *	@param	string	$sequence = null
+	 *	@return	mixed
+	 */
+	public function insertGetId(
+		Builder $query, string $sql, array $values, $sequence = null
+	) {
+		return $this->getProcessor()->processInsert(
+			$query, $sql, $values, $sequence
+		);
 	}
 
 	/**
@@ -574,8 +582,6 @@ class Connection implements ConnectionInterface
 			//
 			$info = compact('message','ex','query','data','this');
 		}
-		//
-		logerror('DBCE: ' . get_class($this), print_r($info, true));
 		//
 		$this->addError(get_class($ex), $ex->getCode(), $ex->getMessage());		
 		$this->addError('PDO', -1, 'ST: ' . print_r($info, true));
