@@ -123,7 +123,7 @@ class MsSqlServerGrammar extends Grammar
 		//
 		$groups = empty($groups)
 			? ''
-			: ' ORDER BY ' . implode(' ', $groups);
+			: ' GROUP BY ' . implode(' ', $groups);
 		//
 		$havings = empty($havings)
 			? ''

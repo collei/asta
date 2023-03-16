@@ -323,9 +323,15 @@ class Builder
 	 * @param mixed $type = 'where'
 	 * @return void
 	 */
-	protected function importBindingsFromSubquery(Builder $query, $type = 'where')
+	protected function importBindingsFromSubquery(Builder $query, $type = null)
 	{
-		$type = $type ?? 'where';
+		if (is_null($type)) {
+			foreach ($this->bindings as $type => $mine) {
+				$this->mergeBindings($query->getBindings($type), $type);
+			}
+			//
+			return;
+		}
 		//
 		if (!array_key_exists($type, $this->bindings)) {
 			throw new InvalidArgumentException(
@@ -389,6 +395,40 @@ class Builder
 		}
 		//
 		return $binds = $this->bindings[$type];
+	}
+
+	/**
+	 * Performs metabinding, allowing the user specify ? placeholders
+	 * for the sqlRaw clauses.
+	 *
+	 * @param	string	$rawSql
+	 * @param	array	$metabindings = []
+	 * @param	string	$type = 'where'
+	 * @return	string
+	 */
+	protected function performQuestionMetaBinding(
+		string $rawSql, array $metabindings = [], string $type = 'where'
+	) {
+		$namedBindings = [];
+		//
+		foreach ($metabindings as $value) {
+			$binder = $this->addBinding($value, $type);
+			//
+			$namedBindings[$binder] = $value;
+		}
+		//
+		if ($hasEscaped = (false !== ($pos = strpos($rawSql, '??')))) {
+			$rawSql = str_replace('??', '::QUESTION_PACEHOLDER::', $rawSql);
+		}
+		//
+		foreach ($namedBindings as $name => $value) {
+			$pos = strpos($rawSql, '?');
+			$rawSql = substr_replace($rawSql, $name, $pos, 1);
+		}
+		//
+		return $hasEscaped
+					? str_replace('::QUESTION_PACEHOLDER::', '??', $rawSql)
+					: $rawSql;
 	}
 
 	/**
@@ -559,7 +599,7 @@ class Builder
 		}
 		//
 		if ($value instanceof Builder) {
-			$this->importBindingsFromSubquery($value, 'where');
+			$this->importBindingsFromSubquery($value);
 			//
 			return $this->getGrammar()->wrapItInParenthesis($value->toSql());
 		}
@@ -614,7 +654,7 @@ class Builder
 		//
 		$callback($query = $this->forSubQuery());
 		//
-		$this->importBindingsFromSubquery($query, 'where');
+		$this->importBindingsFromSubquery($query);
 		//
 		$query = $query->toSql();
 		//
@@ -656,7 +696,7 @@ class Builder
 	{
 		$table($query = $this->forSubQuery());
 		//
-		$this->importBindingsFromSubquery($query, 'where');
+		$this->importBindingsFromSubquery($query);
 		//
 		$this->from = $this->getGrammar()->compileAliasing(
 			$this->getGrammar()->wrapItInParenthesis($query->toSql()), $as
@@ -687,7 +727,7 @@ class Builder
 		if (is_array($table) && current($table) instanceof Builder) {
 			$as = key($table);
 			//
-			$this->importBindingsFromSubquery($table[$as], 'where');
+			$this->importBindingsFromSubquery($table[$as]);
 		}
 		//
 		$join = JoinClause::make($this, $type, $table);
@@ -841,10 +881,11 @@ class Builder
 	 * @param	mixed	$operator = null
 	 * @param	mixed	$value = null
 	 * @param	string	$boolean = 'and'
+	 * @param	string	$clause = 'where'
 	 * @return	void
 	 */
 	protected function addBasicWhere(
-		$column, $operator = null, $value = null, $boolean = 'and'
+		$column, $operator = null, $value = null, $boolean = 'and', $clause = null
 	) {
 		if (is_array($value)) {
 			switch (strtoupper(trim($operator))) {
@@ -864,14 +905,45 @@ class Builder
 					];
 			}
 		} elseif ($value instanceof Builder) {
-			$this->importBindingsFromSubquery($value, 'where');
+			$this->importBindingsFromSubquery($value);
 			//
 			$value = new Expression($value->toSql());
 		} elseif (!is_object($value)) {
 			$value = $this->addBinding($value, 'where');
 		}
 		//
-		$this->wheres[] = ['basic', $column, $operator, $value, $boolean];
+		if ('having' === $clause) {
+			$this->havings[] = ['basic', $column, $operator, $value, $boolean];
+		} else {
+			$this->wheres[] = ['basic', $column, $operator, $value, $boolean];
+		}
+	}
+
+	/**
+	 * Adds a basic, raw where clause.
+	 *
+	 * @param	mixed	$sql
+	 * @param	array	$bindings = []
+	 * @param	string	$boolean = 'and'
+	 * @param	string	$clause = 'where'
+	 * @return	void
+	 */
+	protected function addRawWhere(
+		$sql, array $bindings = [], $boolean = 'and', string $clause = null
+	) {
+		if ($sql instanceof Expression) {
+			$sql = $sql->getValue();
+		}
+		//
+		$clause = ('having' === $clause) ? 'having' : 'where';
+		//
+		$metaSql = $this->performQuestionMetaBinding($sql, $bindings, $clause);
+		//
+		if ('having' === $clause) {
+			$this->havings[] = ['raw', $metaSql, null, null, $boolean];
+		} else {
+			$this->wheres[] = ['raw', $metaSql, null, null, $boolean];
+		}
 	}
 
 	/**
@@ -1239,6 +1311,122 @@ class Builder
 	}
 
 	/**
+	 * Add a group by clause to the query.
+	 *
+	 * @param	array|string	...$groups
+	 * @return	$this
+	 */
+	public function groupBy(...$groups)
+	{
+		foreach ($groups as $group) {
+			$this->groups = array_merge(
+				($this->groups ?? []), Arr::wrap($group)
+			);
+		}
+		//
+		return $this;
+	}
+
+	/**
+	 * Add a raw group by clause to the query.
+	 *
+	 * @param	string	$sql
+	 * @param	array	$bindings = []
+	 * @return	$this
+	 */
+	public function groupByRaw($sql, array $bindings = [])
+	{
+		$metaSql = $this->performQuestionMetaBinding($sql, $bindings, 'groupBy');
+		//
+		$this->groups[] = new Expression($metaSql);
+		//
+		return $this;
+	}
+
+	/**
+	 * Adds a expression to the having clause of the current query.
+	 *
+	 * @param	mixed	$column
+	 * @param	mixed	$operator = null
+	 * @param	mixed	$value = null
+	 * @param	string	$boolean = 'and'
+	 * @return	$this
+	 */
+	public function having(
+		$column, $operator = null, $value = null, $boolean = 'and'
+	) {
+		$boolean = (strtolower($boolean) === 'and') ? 'and' : 'or';
+		//
+		if (is_array($column)) {
+			foreach ($column as $name => $value) {
+				if (is_int($name) && is_array($value) && count($value) >= 3) {
+					$this->addBasicWhere($value[0], $value[1], $value[2], $boolean, 'having');
+				} else {
+					$this->addBasicWhere($name, '=', $value, $boolean, 'having');
+				}
+			}
+			//
+			return $this;
+		}
+		//
+		[$value, $operator] = $this->prepareValueAndOperator(
+			$value, $operator, is_null($value)
+		);
+		//
+		if ($this->invalidOperator($operator)) {
+			[$value, $operator] = [$operator, '='];
+		}
+		//
+		$this->addBasicWhere($column, $operator, $value, $boolean, 'having');
+		//
+		return $this;
+	}
+
+	/**
+	 * Adds a 'or having' clause to the current query.
+	 *
+	 * @param	mixed	$column
+	 * @param	mixed	$operator = null
+	 * @param	mixed	$value = null
+	 * @return	$this
+	 */
+	public function orHaving($column, $operator = null, $value = null)
+	{
+		[$value, $operator] = $this->prepareValueAndOperator(
+			$value, $operator, is_null($value)
+		);
+		//
+		return $this->having($column, $operator, $value, 'or');
+	}
+
+	/**
+	 * Adds a raw 'having' clause to the current query.
+	 *
+	 * @param	string	$sql
+	 * @param	array	$bindings = []
+	 * @param	string	$boolean = 'and'
+	 * @return	$this
+	 */
+	public function havingRaw($sql, array $bindings = [], $boolean = 'and')
+	{
+		$this->addRawWhere($sql, $bindings, $boolean, 'having');
+		//
+		return $this;
+	}
+
+	/**
+	 * Adds a raw 'or having' clause to the current query.
+	 *
+	 * @param	string	$sql
+	 * @param	array	$bindings = []
+	 * @return	$this
+	 */
+	public function orHavingRaw($sql, array $bindings = [])
+	{
+		return $this->havingRaw($sql, $bindings, 'or');
+	}
+
+	/**
 	 * Adds a ORDER BY clause.
 	 *
 	 * @param	string	$field
@@ -1308,12 +1496,13 @@ class Builder
 	 * @param	array	$wheres
 	 * @return	array
 	 */
-	protected function wheresToChain(array $wheres)
+	protected function wheresToChain(array $wheres = null)
 	{
 		$chain = [];
-		$total = $count = count($this->wheres);
+		$wheres = $wheres ?? [];
+		$total = $count = count($wheres);
 		//
-		foreach ($this->wheres as $item) {
+		foreach ($wheres as $item) {
 			if ($count < $total) {
 				$chain[] = $item[4];
 			}
@@ -1349,6 +1538,9 @@ class Builder
 							$item[1], $item[2], $item[3]
 						);
 				}
+				//
+			} elseif ($type=='raw') {
+				$chain[] = $item[1];
 				//
 			} elseif ($type=='nested') {
 				$chain[] = $this->getGrammar()->compileExists(
@@ -1438,11 +1630,8 @@ class Builder
 			);
 		}
 		//
-
 		$table = $this->from;
-
-		$columns = ['*'];
-
+		//
 		if (isset($this->columns)) {
 			$columns = [];
 			//
@@ -1461,94 +1650,29 @@ class Builder
 				//
 				$columns[] = $column;
 			}
+		} else {
+			$columns = ['*'];
 		}
-
+		//
 		$joins = $this->joins ?? [];
-
+		//
 		$wheres = $this->wheresToChain($this->wheres);
-
-		$groups = $havings = [];
-
+		//
+		$groups = $this->groups ?? [];
+		//
+		$havings = $this->wheresToChain($this->havings ?? []);
+		//
 		$orders = $this->orders ?? [];
-
+		//
 		$limit = $this->limit ?? null;
-
+		//
 		$offset = $this->offset ?? null;
-
+		//
 		$sql = $this->getGrammar()->compileSelectStatement(
 			$table, $columns, $joins, $wheres, $groups,
 			$havings, $orders, $limit, $offset
 		);
-
-/*
-
-
-		list($sql, $headed) = ['', false];
 		//
-		//
-		// The FROM clause is generally available for SELECT, UPDATE and DELETE
-		// statements. A JOIN clause might never need to include it. 
-		//
-		if (isset($this->from)) {
-			if (!isset($this->columns)) {
-				$this->columns = ['*'];
-			}
-			//
-			list($headed, $columns) = [true, []];
-			//
-			foreach ($this->columns as $as => $column) {
-				if ($column instanceof Closure) {
-					$callback = $column;
-
-					$callback($query = $this->forSubQuery());
-
-					$column = $this->getGrammar()->compileAliasing(
-						$query->toSql(), (is_int($as) ? $this->generateAlias() : $as)
-					);
-				} elseif ($column instanceof Expression) {
-					$column = $column->getValue();
-				}
-				//
-				$columns[] = $column;
-			}
-			//
-			$sql = $this->getGrammar()->compileSelect(
-				$this->columns, $this->from, ($this->joins ?? []), $this->distinct
-			);
-		}
-		//
-		$whereChain = $this->wheresToChain($this->wheres);
-		//
-		// Compiles expressions to Join conditions for JoinClause instances.
-		// Compiles the where clause expressions for other Builder instances. 
-		//
-		if ($this instanceof JoinClause) {
-			$type = strtoupper($this->type);
-			$as = null;
-			$table = $this->table;
-			//
-			if (is_array($table)) {
-				$as = array_key_first($table);
-				$table = $table[$as]->toSql();
-			}
-			//
-			$sql .= $this->getGrammar()->compileJoin($type, $table, $as, $whereChain);
-		} else {
-			$sql .= $this->getGrammar()->compileWhereChain($whereChain);
-		}
-		//
-		// The order by clause generator. Note that both offset and limit 
-		// wll be included if and only if the order by clause is also included.
-		//
-		if (!empty($this->orders)) {
-			$sql .= $this->getGrammar()->compileOrderByClause($this->orders);
-			//
-			if ($this->limit) {
-				$sql .= $this->getGrammar()->compileLimitClause($this->limit, $this->offset);
-			}
-		}
-		//
-*/
 		return $sql;
 	}
 

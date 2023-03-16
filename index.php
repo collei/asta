@@ -105,7 +105,7 @@ function prettyPrintNestedParenthesis($text, bool $return = false)
 
 $client_supplied_flithy_data = "d' or 1=1 or ''='"; //%d\'--\r\n select * from usuarios ";
 
-//*
+/*
 $produtos = [
 	Contact::count(),
 	Contact::findById(32),
@@ -159,15 +159,17 @@ $querist = Builder::new()->from('clients', 'c')
 		$query->select('count(*)')->from('customers', 'u')
 			->join('cities','u.id_city','=','cities.id')
 			->where('name', 'in', $subwhere)
-			->whereColumn('city', 'r.id_city');
+			->whereColumn('city', 'r.id_city')
+			->groupByRaw('finestra, ?, ?', [51, 49])
+			->havingRaw('count(*) > ?', [15]);
 	}, 'countings')->where('r.item_count','>',10)->orderBy('c.name')->skip(10)->take(20);
 
 $sql = '' . $querist . '';
 
 $bindings = $querist->values();
 
-$builders = compact('produtos','subquery','subwhere','querist');
-//$builders = compact('subquery','subwhere','querist');
+//$builders = compact('produtos','subquery','subwhere','querist');
+$builders = compact('subquery','subwhere','querist');
 
 ?>
 <html>
