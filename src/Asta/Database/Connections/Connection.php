@@ -137,7 +137,7 @@ class Connection implements ConnectionInterface
 	{
 		if (is_array($this->errors)) {
 			foreach ($this->errors as $error) {
-				logerror('DBCE: ' . get_class($this), print_r($error, true));
+				du(':DBCE', get_class($this), $error);
 			}
 		}
 		//

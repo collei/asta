@@ -294,8 +294,12 @@ class Grammar implements GrammarInterface
 	 */
 	public function wrapItInParenthesis(string $thing)
 	{
+		if (substr($thing, 0, 1) === '(' || substr($thing, -1) === ')') {
+			return $thing;
+		}
+		//
 		$par = 0;
-		$expression = '(' . $thing . ')';
+		$expression = '(' . $thing . ')';	
 		$count = strlen($expression);
 		//
 		for ($pos = 0; $pos < $count; $pos++) {
@@ -392,7 +396,7 @@ class Grammar implements GrammarInterface
 	 * Compiles the given parameters into an IN expression.
 	 *
 	 * @param	string	$column
-	 * @param	array	$listing
+	 * @param	mixed	$listing
 	 * @param	bool	$not = false
 	 * @return	string
 	 */

@@ -549,7 +549,9 @@ class Builder
 				$passed[] = $this->prepareValue($subvalue);
 			}
 			//
-			return $this->getGrammar()->wrapItInParenthesis(implode(',', $value));
+			// Let's leave to the grammar compiler
+			// the task of surrounding it with parenthesis
+			return implode(',', $value);
 		}
 		//
 		if ($value instanceof Expression) {

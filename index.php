@@ -4,15 +4,17 @@ require __DIR__ . '/vendor/autoload.php';
 //https://social.msdn.microsoft.com/Forums/sqlserver/en-US/d0ce3e96-cb59-42b4-9587-9978d7bdf8ae/cant-connect-to-sqlexpress-on-another-machine-on-lan?forum=sqlexpress
 
 use Asta\Database\Query\Builder;
-use Asta\Database\Connections\Connection;
+//use Asta\Database\Connections\Connection;
+use Asta\Database\Connections\Connector;
 use Asta\Database\Repository\Model;
 use Jeht\Support\Caller;
 
-$conn = new Connection(
+$conn = Connector::make(
+	'mssql',
 	'sqlsrv:Server=KAZUHA\SQLEXPRESS;Database=contacta',
-	'contacta',
 	'usrContacta',
-	'1979Bratislava'
+	'1979Bratislava',
+	'contacta'
 );
 
 class Contact extends Model

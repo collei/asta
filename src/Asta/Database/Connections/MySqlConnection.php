@@ -12,7 +12,7 @@ use Asta\Database\Query\Grammars\MySqlGrammar;
  *	@author alarido <alarido.su@gmail.com>
  *	@since 2021-07-xx
  */
-class MySqlConnection implements ConnectionInterface
+class MySqlConnection extends Connection
 {
 	/**
 	 *	@var array

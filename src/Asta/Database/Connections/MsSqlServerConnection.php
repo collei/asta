@@ -12,7 +12,7 @@ use Asta\Database\Query\Grammars\MsSqlServerGrammar;
  *	@author alarido <alarido.su@gmail.com>
  *	@since 2021-07-xx
  */
-class MsSqlServerConnection implements ConnectionInterface
+class MsSqlServerConnection extends Connection
 {
 	/**
 	 *	@var array
