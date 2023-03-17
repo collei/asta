@@ -589,7 +589,7 @@ class Grammar implements GrammarInterface
 		//
 		$groups = empty($groups)
 			? ''
-			: ' ORDER BY ' . implode(' ', $groups);
+			: ' GROUP BY ' . implode(' ', $groups);
 		//
 		$havings = empty($havings)
 			? ''

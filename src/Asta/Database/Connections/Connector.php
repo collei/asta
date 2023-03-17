@@ -90,7 +90,7 @@ class Connector
 	/**
 	 *	Connects and returns the created connection
 	 *
-	 *	@return	\Asta\Database\Connections\Connection
+	 *	@return	\Asta\Database\Connections\ConnectionInterface
 	 */
 	public function connect()
 	{
@@ -105,8 +105,8 @@ class Connector
 	/**
 	 *	Sets the connection driver
 	 *
-	 *	@return	string	$driver
-	 *	@return	\Asta\Database\Connections\Connection
+	 *	@param	string	$driver
+	 *	@return	$this
 	 */
 	public function driver(string $driver)
 	{
@@ -117,8 +117,8 @@ class Connector
 	/**
 	 *	Sets the connection string
 	 *
-	 *	@return	string	$dsn
-	 *	@return	\Asta\Database\Connections\Connection
+	 *	@param	string	$dsn
+	 *	@return	$this
 	 */
 	public function dsn(string $dsn)
 	{
@@ -129,8 +129,8 @@ class Connector
 	/**
 	 *	Sets the database host
 	 *
-	 *	@return	string	$host
-	 *	@return	\Asta\Database\Connections\Connection
+	 *	@param	string	$host
+	 *	@return	$this
 	 */
 	public function host(string $host)
 	{
@@ -141,8 +141,8 @@ class Connector
 	/**
 	 *	Sets the database user
 	 *
-	 *	@return	string	$user
-	 *	@return	\Asta\Database\Connections\Connection
+	 *	@param	string	$user
+	 *	@return	$this
 	 */
 	public function user(string $user)
 	{
@@ -153,8 +153,8 @@ class Connector
 	/**
 	 *	Sets the database user password
 	 *
-	 *	@return	string	$pass
-	 *	@return	\Asta\Database\Connections\Connection
+	 *	@param	string	$pass
+	 *	@return	$this
 	 */
 	public function pass(string $pass)
 	{
@@ -165,8 +165,8 @@ class Connector
 	/**
 	 *	Sets the connection charset
 	 *
-	 *	@return	string	$charset
-	 *	@return	\Asta\Database\Connections\Connection
+	 *	@param	string	$charset
+	 *	@return	$this
 	 */
 	public function charset(string $charset)
 	{
@@ -177,9 +177,9 @@ class Connector
 	/**
 	 *	Sets database connection options
 	 *
-	 *	@return	string	$option
-	 *	@return	mixed	$value
-	 *	@return	\Asta\Database\Connections\Connection
+	 *	@param	string	$option
+	 *	@param	mixed	$value
+	 *	@return	$this
 	 */
 	public function option(string $option, $value)
 	{
@@ -190,8 +190,8 @@ class Connector
 	/**
 	 *	Sets several connection options at once
 	 *
-	 *	@return	array	$options	an associative array of values indexed by their names
-	 *	@return	\Asta\Database\Connections\Connection
+	 *	@param	array	$options	an associative array of values indexed by their names
+	 *	@return	$this
 	 */
 	public function options(array $options)
 	{
@@ -211,9 +211,8 @@ class Connector
 	 *	@param	string	$username
 	 *	@param	string	$password
 	 *	@param	string	$db
-	 *	@return	instanceof \Asta\Database\Connections\Connection
+	 *	@return	\Asta\Database\Connections\ConnectionInterface
 	 */
-
 	public static function make(string $driver, string $dsn, string $username, string $password, string $db = '')
 	{
 		$driver = strtolower($driver);

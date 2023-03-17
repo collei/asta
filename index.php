@@ -161,7 +161,7 @@ $querist = Builder::new()->from('clients', 'c')
 			->where('name', 'in', $subwhere)
 			->whereColumn('city', 'r.id_city')
 			->groupByRaw('finestra, ?, ?', [51, 49])
-			->havingRaw('count(*) > ?', [15]);
+			->havingRaw('count(*) > between ? and ?', [15, 25]);
 	}, 'countings')->where('r.item_count','>',10)->orderBy('c.name')->skip(10)->take(20);
 
 $sql = '' . $querist . '';
