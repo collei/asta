@@ -10,12 +10,12 @@
 	"type": "library",
 	"license": "MIT",
 	"require": {
-		"php": "^7.0 || ^8.0",
-		"collei/jeht": "*"
+		"php": "^7.0 || ^8.0"
 	},
 	"autoload": {
 		"psr-4": {
 			"Asta\\": "src/Asta",
+			"Jeht\\": "src/Jeht"
 		},
 		"files": [
 			"src/helpers.php"
@@ -24,11 +24,11 @@
 	"funding": [
 		{
 			"type": "bitcoin",
-			"url": "1CtoobRfoL4pHJ5i24dVCtGWcYcRtBLMaz"
+			"url": "https://www.blockchain.com/btc/1CtoobRfoL4pHJ5i24dVCtGWcYcRtBLMaz"
 		},
 		{
 			"type": "monero",
-			"url": "43DvqaNskRfeyNnCfvapxrXg9Bb4EADCj9aFW3FQdthi3ukhxZRtLvQiqMNeYvNvxN8F7WaULkKJJ63RxHgohrPtDuykFmL"
+			"url": "https://www.blockchain.com/xmr/43DvqaNskRfeyNnCfvapxrXg9Bb4EADCj9aFW3FQdthi3ukhxZRtLvQiqMNeYvNvxN8F7WaULkKJJ63RxHgohrPtDuykFmL"
 		}
 	]
 }
