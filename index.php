@@ -33,7 +33,7 @@ class Mean extends Model
 {
 	public function type()
 	{
-		return $this->belongsTo(MeanType::class);//, 'mean_type_id');
+		return $this->belongsTo(MeanType::class);
 	}
 	public function person()
 	{
@@ -105,12 +105,12 @@ function prettyPrintNestedParenthesis($text, bool $return = false)
 
 $client_supplied_flithy_data = "d' or 1=1 or ''='"; //%d\'--\r\n select * from usuarios ";
 
-/*
+//*
 $produtos = [
 	Contact::count(),
 	Contact::findById(32),
 	Contact::from([['name', 'like', '%Kami%']]),
-	Contact::all(),
+	Contact::all()->skip(5)->take(10),
 ];
 
 //*
@@ -169,7 +169,8 @@ $sql = '' . $querist . '';
 $bindings = $querist->values();
 
 //$builders = compact('produtos','subquery','subwhere','querist');
-$builders = compact('subquery','subwhere','querist');
+//$builders = compact('subquery','subwhere','querist');
+$builders = compact('produtos');
 
 ?>
 <html>

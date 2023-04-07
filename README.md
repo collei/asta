@@ -14,15 +14,15 @@ Currently under developement.
 
 ## Features
 ### Current Features
-* [None]
-
-### Under Developement
 * Query Builder
 * Model Mapping Feature
+* Support for SQL Server
+
+### Under Developement
+* Result Paginator
 
 ### For the Long Run
-* Result Paginator
-* Support for MySQL/MariaDB, SQL Server and PostgreSQL
+* Support for MySQL/MariaDB, PostgreSQL, etc.
 
 ## License
 For more info, check the LICENSE file.
