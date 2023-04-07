@@ -4,3 +4,4 @@ vendor
 *.sublime-project
 *.sublime-workspace
 Databases-locais.jpg
+*.zip

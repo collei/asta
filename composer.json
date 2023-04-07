@@ -10,12 +10,12 @@
 	"type": "library",
 	"license": "MIT",
 	"require": {
-		"php": "^7.0 || ^8.0"
+		"php": "^7.0 || ^8.0",
+		"collei/jeht": "*"
 	},
 	"autoload": {
 		"psr-4": {
 			"Asta\\": "src/Asta",
-			"Jeht\\": "src/Jeht"
 		},
 		"files": [
 			"src/helpers.php"
